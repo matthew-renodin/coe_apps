@@ -18,7 +18,6 @@ root-y = common libsel4 libmuslc \
 	    libsel4simple libsel4vka libsel4allocman \
             libsel4platsupport \
             libutils libsel4simple-default libsel4utils libsel4debug \
-            libdevutils
             
 
 root: kernel_elf $(root-y)
