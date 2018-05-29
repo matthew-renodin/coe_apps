@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sched.h>
+#include <time.h>
 
 #include <sel4/sel4.h>
 #include <sel4debug/debug.h>
@@ -43,6 +46,26 @@ seL4_CPtr get_untyped(seL4_BootInfo *info, int size_bytes) {
 
 static int stop_test = 0;
 
+/*
+void *safe_malloc(int size) {
+    static int safe_lock = 0;
+    void *vp = NULL;
+    int spincount = 0;
+
+    while( ! __sync_bool_compare_and_swap(&safe_lock, 0, 1)){
+        seL4_Yield();
+        spincount++;
+        if(spincount > 10)seL4_Sleep(10);
+    }
+    vp = malloc(size);
+
+    safe_lock = 0;
+
+    return vp;
+    
+}
+*/
+
 /* function to run in the new thread */
 void worker_thread(void) {
     int* buf;
@@ -50,13 +73,16 @@ void worker_thread(void) {
     
     while (!stop_test) {
         buf = (int *)malloc(16);
-        if(!buf) {
+        if(buf == NULL) {
             printf("\n\nWorker thread: Allocation failed!\n\n");
             stop_test = 1;
             break;
         }
         *buf = 2;
-        //printf("Worker %p: allocated %p, %x\n", &buf, buf);
+        //struct timespec r = {.tv_sec = 1, .tv_nsec = 0};
+        //nanosleep(&r, NULL);
+        //sched_yield();
+        //printf("Worker %p: allocated %p\n", &buf, buf);
         if(*buf != 2) {
             printf("\n\nWorker thread: unsafe allocation!\n\n");
             stop_test = 1;
