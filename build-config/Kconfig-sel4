@@ -23,7 +23,7 @@ source "kernel/Kconfig"
 endmenu
 
 menu "seL4 Applications"
-    source "apps/root/Kconfig"
+    source "apps/root_task/Kconfig"
 endmenu
 
 menu "seL4 Libraries"
@@ -45,6 +45,7 @@ menu "seL4 Libraries"
     source "libs/libsel4debug/Kconfig"
     source "libs/libethdrivers/Kconfig"
     source "libs/liblwip/Kconfig"
+    source "libs/libprocess/Kconfig"
 endmenu
 
 menu "Tools"
