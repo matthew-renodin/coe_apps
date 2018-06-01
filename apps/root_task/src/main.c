@@ -215,6 +215,7 @@ int main(void) {
     }
 
     printf("main: hello world\n");
+    seL4_DebugDumpScheduler(); 
     while(1);
 
     return 0;
