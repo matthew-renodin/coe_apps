@@ -45,7 +45,9 @@ menu "seL4 Libraries"
     source "libs/libsel4debug/Kconfig"
     source "libs/libethdrivers/Kconfig"
     source "libs/liblwip/Kconfig"
+    source "libs/liballocate/Kconfig"
     source "libs/libprocess/Kconfig"
+    source "libs/libsync/Kconfig"
 endmenu
 
 menu "Tools"

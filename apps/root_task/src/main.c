@@ -43,6 +43,7 @@ seL4_CPtr get_untyped(seL4_BootInfo *info, int size_bytes) {
     return -1;
 }
 
+static seL4_CPtr ep_cap_start;
 
 static int stop_test = 0;
 
@@ -72,23 +73,27 @@ void worker_thread(void) {
     printf("Worker thread: hallo wereld. stack %p\n", &buf);
     
     while (!stop_test) {
-        buf = (int *)malloc(16);
-        if(buf == NULL) {
-            printf("\n\nWorker thread: Allocation failed!\n\n");
-            stop_test = 1;
-            break;
-        }
-        *buf = 2;
-        //struct timespec r = {.tv_sec = 1, .tv_nsec = 0};
-        //nanosleep(&r, NULL);
-        //sched_yield();
-        //printf("Worker %p: allocated %p\n", &buf, buf);
-        if(*buf != 2) {
-            printf("\n\nWorker thread: unsafe allocation!\n\n");
-            stop_test = 1;
-            break;
-        }
-        free(buf);
+        seL4_MessageInfo_t msg;
+        seL4_Word badge;
+        msg = seL4_Recv(ep_cap_start, &badge);
+        seL4_Send(ep_cap_start, msg);
+        //buf = (int *)malloc(16);
+        //if(buf == NULL) {
+        //    printf("\n\nWorker thread: Allocation failed!\n\n");
+        //    stop_test = 1;
+        //    break;
+        //}
+        //*buf = 2;
+        ////struct timespec r = {.tv_sec = 1, .tv_nsec = 0};
+        ////nanosleep(&r, NULL);
+        ////sched_yield();
+        ////printf("Worker %p: allocated %p\n", &buf, buf);
+        //if(*buf != 2) {
+        //    printf("\n\nWorker thread: unsafe allocation!\n\n");
+        //    stop_test = 1;
+        //    break;
+        //}
+        //free(buf);
     }
 
     while(1);
@@ -139,7 +144,9 @@ int main(void) {
      * hint: The bootinfo struct contains a range of free cap slot indices.
      */
 
-    tcb_cap_start = info->empty.start;
+    ep_cap_start = info->empty.start;
+    tcb_cap_start = ep_cap_start+1;
+    
 
 
     seL4_CPtr untyped;
@@ -158,8 +165,19 @@ int main(void) {
                                 seL4_WordBits /* depth */,
                                 tcb_cap_start /* offset */,
                                 NUM_WORKER_THREADS /* num objects */);
-
     ZF_LOGF_IFERR(error, "Failed to allocate a TCB object.\n");
+
+
+    untyped = get_untyped(info, BIT(seL4_EndpointBits));
+    error = seL4_Untyped_Retype(untyped /* untyped cap */,
+                                seL4_EndpointObject /* type */,
+                                seL4_EndpointBits /* size */,
+                                cspace_cap /* root cnode cap */,
+                                cspace_cap /* destination cspace */,
+                                seL4_WordBits /* depth */,
+                                ep_cap_start /* offset */,
+                                1 /* num objects */);
+    ZF_LOGF_IFERR(error, "Failed to allocate an EP object.\n");
 
     for(i = 0; i < NUM_WORKER_THREADS; i++) {
 
@@ -212,6 +230,7 @@ int main(void) {
         ZF_LOGF_IFERR(error, "Failed to start new thread.\n");
 
         printf("Started thread %i\n", i);
+        seL4_Yield();
     }
 
     printf("main: hello world\n");

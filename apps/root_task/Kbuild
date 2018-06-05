@@ -4,7 +4,7 @@
 #
 ###############################################################################
 
-apps-$(CONFIG_APP_ROOT) += root_task
+apps-$(CONFIG_APP_ROOT_TASK) += root_task
 
 root_task-y = common libsel4 libmuslc libsel4muslcsys libsel4simple \
               libsel4vka libsel4allocman libsel4platsupport libutils \

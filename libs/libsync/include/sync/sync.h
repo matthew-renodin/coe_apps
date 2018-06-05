@@ -1,8 +1,8 @@
 /*
- * process.h
+ * sync.h
  *
  *
- * Top-level include for libprocess.
+ * Top-level include for libsync.
  */
 
 #pragma once

@@ -1,8 +1,8 @@
 /*
- * process.h
+ * allocate.h
  *
  *
- * Top-level include for libprocess.
+ * Top-level include for liballocate.
  */
 
 #pragma once
