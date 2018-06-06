@@ -27,6 +27,9 @@ typedef struct process_caps {
 } process_caps_t;
 
 typedef struct process_handle {
+    /* Only one thread can modify this structure at once */
+    int lock;
+
     /* Local caps to a child process */
     process_caps_t local;
 

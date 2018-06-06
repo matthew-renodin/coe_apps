@@ -1,8 +1,8 @@
 /*
- * prototypes.h
+ * prototype.h
  *
  *
- * Exported prototype definitions for liballocate
+ * Exported prototype definitions for libinit
  */
 
 #pragma once
@@ -12,8 +12,9 @@
  * INCLUDES
  *****************************************************************************/
 
+
 /******************************************************************************
  * PROTOTYPES
  *****************************************************************************/
-
-
+int init(void);
+int init_root_task(void);

@@ -1,8 +1,8 @@
 /*
- * allocate.h
+ * init.h
  *
  *
- * Top-level include for liballocate.
+ * Top-level include for libinit.
  */
 
 #pragma once
@@ -11,6 +11,5 @@
 /******************************************************************************
  * INCLUDES
  *****************************************************************************/
-#include <process/prototypes.h>
-#include <process/types.h>
+#include <init/prototype.h>
 

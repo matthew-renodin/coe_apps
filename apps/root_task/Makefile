@@ -23,7 +23,7 @@ ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLA
 # LIBRARIES
 ###############################################################################
 LIBS = c sel4 sel4muslcsys sel4simple sel4vka sel4allocman sel4platsupport \
-       platsupport utils sel4simple-default sel4utils sel4debug
+       platsupport utils sel4simple-default sel4utils sel4debug process sync init
 
 
 ###############################################################################

@@ -1,0 +1,10 @@
+###############################################################################
+# libinit - Kbuild
+#
+#
+###############################################################################
+
+libs-$(CONFIG_LIB_INIT) += libinit
+libinit: libsel4 common $(libc) libsel4vka libsel4allocman libplatsupport libsel4platsupport \
+         libsel4simple libsel4vspace
+

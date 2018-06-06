@@ -1,19 +1,25 @@
 /*
- * types.h
+ * init.c
  *
  *
- * Exported type definitions for liballocate
+ * Core implementation of libinit
  */
-
-#pragma once
-
 
 /******************************************************************************
  * INCLUDES
  *****************************************************************************/
 #include <sel4/sel4.h>
 
+#include <init/init.h>
+
 /******************************************************************************
- * TYPES
+ * PROTOTYPES
  *****************************************************************************/
+int init(void) {
+    return 0;
+}
+
+int init_root_task(void) {
+    return 0;
+}
 
