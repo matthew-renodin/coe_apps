@@ -1,15 +1,11 @@
-/*
- * init.h
+/**
+ * @file init.h
+ * @brief Top-level include for libinit.
  *
- *
- * Top-level include for libinit.
  */
 
 #pragma once
 
 
-/******************************************************************************
- * INCLUDES
- *****************************************************************************/
-#include <init/prototype.h>
+#include <init/prototypes.h>
 

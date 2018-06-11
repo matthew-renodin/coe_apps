@@ -1,25 +1,21 @@
-/*
- * init.c
+/**
+ * @file init.c
+ * @brief Core implementation of libinit
  *
- *
- * Core implementation of libinit
  */
 
-/******************************************************************************
- * INCLUDES
- *****************************************************************************/
 #include <sel4/sel4.h>
 
 #include <init/init.h>
 
-/******************************************************************************
- * PROTOTYPES
- *****************************************************************************/
+
 int init(void) {
+    /* TODO: In progress */
     return 0;
 }
 
 int init_root_task(void) {
+    /* TODO: In progress */
     return 0;
 }
 

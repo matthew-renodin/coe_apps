@@ -1,16 +1,12 @@
-/*
- * process.h
+/**
+ * @file process.h
+ * @brief Top-level include for libprocess.
  *
- *
- * Top-level include for libprocess.
  */
 
 #pragma once
 
 
-/******************************************************************************
- * INCLUDES
- *****************************************************************************/
 #include <process/prototypes.h>
 #include <process/types.h>
 
