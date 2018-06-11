@@ -6,8 +6,7 @@
 
 config LIB_INIT
     bool "libinit"
-    depends on HAVE_LIB_SEL4 && HAVE_LIBC && HAVE_LIB_SEL4_VKA && HAVE_LIB_SEL4_ALLOCMAN && \
-               HAVE_LIB_SEL4_SIMPLE && HAVE_LIB_SEL4_PLATSUPPORT && HAVE_LIB_SEL4_VSPACE
+    depends on HAVE_LIB_SEL4 && HAVE_LIBC && HAVE_LIB_SEL4_VKA && HAVE_LIB_SEL4_ALLOCMAN
     select HAVE_SEL4_LIBS
     default y
     help

@@ -10,6 +10,6 @@ menuconfig APP_ROOT_TASK
     depends on LIB_SEL4 && (LIB_MUSL_C || LIB_SEL4_C) && LIB_SEL4_PLAT_SUPPORT && \
                LIB_UTILS && LIB_SEL4_SIMPLE_DEFAULT && LIB_SEL4_DEBUG && \
                LIB_SEL4_UTILS && LIB_SEL4_VKA && \
-               LIB_PROCESS && LIB_SYNC && LIB_INIT
+               LIB_PROCESS && LIB_INIT
     help
        Initial task to run. In charge of starting other processes and distributing capabilities.
