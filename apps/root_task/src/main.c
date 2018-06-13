@@ -44,5 +44,12 @@ int main(void) {
 }
 
 
-
+/**
+ * Avoid main falling off the end of the world.
+ */
+void abort(void) {
+    while(1) { 
+        nanosleep(&(struct timespec){.tv_sec=1, .tv_nsec=0}, NULL);
+    }
+}
 

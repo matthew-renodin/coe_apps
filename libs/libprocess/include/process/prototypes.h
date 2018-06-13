@@ -16,15 +16,17 @@
  * Setup a process handle struct with fresh kernel objects. 
  * Process won't begin until process_run is called.
  *
- * @param       elf_file_name   The name of the executable file to run
- * @param       stack_size      Initial thread's stack space to allocate
- * @param       priority        Initial threads's priority
- * @param       priority        Initial threads's core affinity, ignored for single core systems
- * @param[out]  handle          Handle to initalize
- * @return                      Error code
+ * @param       elf_file_name       The name of the executable file to run
+ * @param       heap_size_pages     Initial thread's heap space to allocate in pages
+ * @param       stack_size_pages    Initial thread's stack space to allocate in pages
+ * @param       priority            Initial threads's priority
+ * @param       priority            Initial threads's core affinity, ignored for single core systems
+ * @param[out]  handle              Handle to initalize
+ * @return                          Error code
  */
 int process_create(const char *elf_file_name,
-                   seL4_Word stack_size,
+                   seL4_Word heap_size_pages,
+                   seL4_Word stack_size_pages,
                    seL4_Word priority,
                    seL4_Word cpu_affinity,
                    process_handle_t *handle);
@@ -52,7 +54,7 @@ void process_run(process_handle_t *handle);
  * @param   length_bytes    Size of region to map
  * @return                  Error code
  */
-int process_add_device_memory(process_handle_t *handle, void *paddr, seL4_Word length_bytes);
+int process_add_device_pages(process_handle_t *handle, void *paddr, seL4_Word num_pages);
 
 /**
  * @brief Delegate a device interrupt to a given process.
@@ -102,13 +104,13 @@ int process_connect_shmem(seL4_Word length_bytes,
  * Thread is started by the new process.
  * 
  * @param   handle
- * @param   stack_size      Thread's stack space to allocate
- * @param   priority        Threads's priority
- * @param   priority        Threads's core affinity, ignored for single core systems
- * @return                  Error code
+ * @param   stack_size_pages    Thread's stack space to allocate in pages
+ * @param   priority            Threads's priority
+ * @param   priority            Threads's core affinity, ignored for single core systems
+ * @return                      Error code
  */
 int process_add_thread(process_handle_t *handle, 
-                       seL4_Word stack_size,
+                       seL4_Word stack_size_pages,
                        seL4_Word priority,
                        seL4_Word cpu_affinity);
 
@@ -130,11 +132,11 @@ int process_add_thread(process_handle_t *handle,
  * @param   length_bytes    Size of the untyped chunk to give over.
  * @return                  Error code
  */
-int process_add_untyped(process_handle_t *handle, seL4_Word length_bytes);
+int process_add_untyped_memory(process_handle_t *handle, seL4_Word length_bytes);
 
 
 /* TODO: finish api and doc */
 //int process_add_endpoint(process_handle_t *handle, vka_object_t ep);
 //int process_add_notification(process_handle_t *handle, vka_object_t ep);
-//int process_map_page(process_handle_t *handle, void *vaddr);
+//int process_map_pages(process_handle_t *handle, void *vaddr, seL4_Word num_pages);
 
