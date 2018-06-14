@@ -4,7 +4,7 @@
 #
 ###############################################################################
 
-config LIB_INIT
+menuconfig LIB_INIT
     bool "libinit"
     depends on HAVE_LIB_SEL4 && HAVE_LIBC && HAVE_LIB_SEL4_VKA && HAVE_LIB_SEL4_ALLOCMAN
     select HAVE_SEL4_LIBS
@@ -12,4 +12,19 @@ config LIB_INIT
     help
         A library to help a process initialize.
 
+    
+config LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES
+    int "Number of bytes to statically allocate for allocman to bootstrap"
+    default 32768
+    depends on LIB_INIT
+    help 
+        This value sets the size of a static array to give to liballocman for it
+        to bootstrap its bookkeeping.
 
+
+config LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES
+    int "Limit the size of the allocman's dynamically allocated bookkeeping data."
+    default 65536
+    depends on LIB_INIT
+    help 
+        This value sets the size of allocman's dynamically allocated space for bookkeeping.

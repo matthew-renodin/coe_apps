@@ -19,47 +19,29 @@
  * @TAG(IAI_BSD)
  */
 /**
- * @file types.h
- * @brief Exported type definitions for libprocess
+ * @file prototypes.h
+ * @brief Exported prototype definitions for libthread
  *
  */
 
 #pragma once
 
-
 #include <sel4/sel4.h>
-#include <thread/thread.h>
+#include <vka/vka.h>
+#include <vspace/vspace.h>
 
-/**
- * @brief Collect all the capabilities to a process's resources.
- */
-typedef struct process_caps {
-    seL4_CPtr cnode_cap;
-    seL4_CPtr page_dir_cap;
-    seL4_CPtr fault_ep_cap;
-    //seL4_CPtr untyped_resources_cap;
-} process_caps_t;
+#include "types.h"
 
+int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void *arg);
 
-/**
- * @brief Userspace bookeeping for a child process resources.
- */
-typedef struct process_handle {
-    /* Only one thread can modify this structure at once */
-    //int lock;
-    int running;
+int thread_handle_create(seL4_Word stack_size_pages,
+                         seL4_Word priority,
+                         seL4_Word cpu_affinity,
+                         thread_handle_t *handle);
 
-    char *name;
-
-    /* Local caps to a child process */
-    process_caps_t local;
-
-    /* Child processes' copy of it caps. */ 
-    process_caps_t remote;
+//int thread_handle_create_remote();
 
 
-    thread_handle_t *thread_list_head;
-    thread_handle_t *thread_list_tail;
+int thread_handle_get(seL4_Word id, thread_handle_t *handle);
 
-} process_handle_t;
 

@@ -1,0 +1,15 @@
+###############################################################################
+# libthread - Kconfig
+#
+#
+###############################################################################
+
+config LIB_THREAD
+    bool "libthread"
+    depends on HAVE_LIB_SEL4 && HAVE_LIBC && HAVE_LIB_SEL4_VKA && HAVE_LIB_SEL4_ALLOCMAN
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        A library to help a create, run, and stop threads.
+
+

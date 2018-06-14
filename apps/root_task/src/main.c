@@ -60,6 +60,8 @@ int main(void) {
 
     fancy_hello_world();
 
+    seL4_DebugSnapshot();
+
     return 0;
 }
 

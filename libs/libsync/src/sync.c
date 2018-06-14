@@ -18,3 +18,25 @@
  *
  * @TAG(IAI_BSD)
  */
+/**
+ * @file sync.c
+ * @brief Core implementation of libsync
+ */
+
+
+#include <autoconf.h>
+#include <sel4/sel4.h>
+#include <vka/vka.h>
+#include <vspace/vspace.h>
+#include <allocman/allocman.h>
+#include <simple/simple.h>
+
+#include <stdint.h>
+
+/* Internal bookeeping references */
+static vka_t *vka;
+static allocman_t *allocman;
+static vspace_t *vspace;
+static simple_t *simple;
+static seL4_BootInfo *info;
+

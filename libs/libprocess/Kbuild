@@ -5,5 +5,5 @@
 ###############################################################################
 
 libs-$(CONFIG_LIB_PROCESS) += libprocess
-libprocess: libsel4 common $(libc)
+libprocess: libsel4 common $(libc) libthread
 

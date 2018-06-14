@@ -8,7 +8,7 @@ apps-$(CONFIG_APP_ROOT_TASK) += root_task
 
 root_task-y = common libsel4 libmuslc libsel4muslcsys libsel4simple \
               libsel4vka libsel4allocman libsel4platsupport libutils \
-              libsel4simple-default libsel4utils libsel4debug \
-              libprocess libsync libinit
+              libsel4simple-default libsel4utils libsel4debug libsel4vspace \
+              libprocess libthread libsync libinit
 
 root_task: kernel_elf $(root_task-y)

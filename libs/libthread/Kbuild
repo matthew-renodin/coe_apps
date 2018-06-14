@@ -1,0 +1,10 @@
+###############################################################################
+# libthread - Kbuild
+#
+#
+###############################################################################
+
+libs-$(CONFIG_LIB_THREAD) += libthread
+libthread: libsel4 common $(libc) libsel4vka libsel4allocman libplatsupport libsel4platsupport \
+         libsel4simple libsel4vspace
+
