@@ -1,6 +1,7 @@
 // A very simple protocol definition, consisting of only
 // one message.
 
+syntax = "proto2";
 
 message Untyped {
   required int64 phys_addr = 1;
