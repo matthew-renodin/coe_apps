@@ -36,11 +36,16 @@
 #include <allocman/vka.h>
 #include <allocman/bootstrap.h>
 #include <sel4platsupport/bootinfo.h>
+#include <sel4platsupport/platsupport.h>
+#include <sel4platsupport/serial.h>
 #include <utils/zf_log.h>
 #include <sel4utils/sel4_zf_logif.h>
 #include <sel4utils/vspace.h>
 
 #include <init/init.h>
+
+
+#include "init_data.pb-c.h"
 
 /* Internal bookeeping variables for a process
  * These object operate at various layers 
@@ -76,6 +81,8 @@ static allocman_t *allocman;
 static simple_t simple;
 static seL4_BootInfo *info;
 
+static serial_objects_t serial_objects;
+
 
 /* In order for allocman to start bookkeeping it needs memory. 
  * This array is memory for it to bootstrap itself before untyped 
@@ -95,7 +102,7 @@ static void print_coe_banner(void) {
             " _\\ \\/ _// /_/_  _/ / /__/ _ \\/ _/  \n"
             "/___/___/____//_/   \\___/\\___/___/  \n"
             "                                    \n");
-    printf("Booting up...\n\n\n");  
+    printf("Copyright 2018 IAI.\n\nSetting up...\n");  
 }
 
 
@@ -108,26 +115,24 @@ int init_root_task(void) {
     int error;
     static int run_once = 0;
 
-    if(run_once) return -1;
+    if(run_once) {
+        ZF_LOGF("This function may only be called once");    
+    }
     
     zf_log_set_tag_prefix("root_task:");
 
-    print_coe_banner();
+#ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugNameThread(seL4_CapInitThreadTCB, "root_task");
+#endif
+
 
     info = platsupport_get_bootinfo();
     ZF_LOGF_IF(info == NULL, "Failed to get bootinfo.");
-
 
     /* Initialize the simple structure's function pointers,
      * Simple manages our bootinfo struct for us. */
     simple_default_init_bootinfo(&simple, info);
 
-#ifdef CONFIG_DEBUG_BUILD
-    /* This will print the available untypeds */
-    simple_print(&simple);
-
-    seL4_DebugNameThread(seL4_CapInitThreadTCB, "root_task");
-#endif
 
     /* Setup allocman with a static pool to bootstrap its bookkeeping.
      * Since we are providing it our simple struct it will fill itself
@@ -174,6 +179,55 @@ int init_root_task(void) {
                                      allocman_dynamic_pool,
                                      CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
                                      simple_get_pd(&simple));
+
+
+
+    /* All the allocator layers are now configured. 
+     * For release builds we need to setup the serial driver.
+     * Since we want to control the serial caps/objects explicitly, we break the
+     * initialization into two calls.
+     * TODO: implement a solution here
+     */
+    //sel4platsupport_init_default_serial_caps(&vka, &vspace, &simple, &serial_objects);
+    platsupport_serial_setup_simple(&vspace, &simple, &vka);
+
+
+
+    print_coe_banner();
+
+    /* This will print the available untypeds */
+    simple_print(&simple);
+
+
+
+    /* SIMPLE EXAMPLE OF PROTOBUF-C */
+
+    InitData init = INIT_DATA__INIT;
+
+    init.n_untyped_list = 10;
+    init.untyped_list = malloc(10 * sizeof(Untyped *));
+    for(int i = 0; i < 10; i++) {
+        init.untyped_list[i] = malloc(sizeof(Untyped));
+        untyped__init(init.untyped_list[i]);
+        init.untyped_list[i]->phys_addr = i;
+        init.untyped_list[i]->size = i;
+        init.untyped_list[i]->phys_addr = i;
+    }
+    init.proc_name = "Charlie";
+
+
+    printf("Packed size: %i\n", init_data__get_packed_size(&init));
+
+    void *buf = malloc(init_data__get_packed_size(&init));
+    int size = init_data__pack(&init, buf);
+
+    
+    printf("Packed size: %i\n", size);
+
+
+     
+    
+    
 
     return 0;
 }

@@ -45,6 +45,7 @@
  * @return                          Error code
  */
 int process_create(const char *elf_file_name,
+                   const char *proc_name,
                    seL4_Word heap_size_pages,
                    seL4_Word stack_size_pages,
                    seL4_Word priority,
@@ -92,48 +93,45 @@ int process_add_device_irq(process_handle_t *handle, int irq_number);
 /**
  * @brief Connect two processes with a new endpoint for IPC.
  *
- * @param   handle1 First process to give new ep
- * @param   perms1  Permissions to give first process
- * @param   handle1 Second process to give new ep
- * @param   perms1  Permissions to give Second process
+ * @param   handle1     First process to give new ep
+ * @param   perms1      Permissions to give first process
+ * @param   handle1     Second process to give new ep
+ * @param   perms1      Permissions to give Second process
+ * @param   conn_name   Name of the connection for lookups
  */
 int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
-                       process_handle_t *handle2, seL4_CapRights_t perms2);
+                       process_handle_t *handle2, seL4_CapRights_t perms2,
+                       const char *conn_name);
 
 
 /**
  * @brief Connect two processes with a chunk of shared memory.
  *
- * @param   length_bytes    Size of the shared memory page to setup.
+ * @param   num_pages       Size of the shared memory page to setup.
  * @param   handle1         First process to give new page
  * @param   perms1          Permissions to give first process
  * @param   handle1         Second process to give new page
  * @param   perms1          Permissions to give Second process
+ * @param   conn_name       Name of the connection for lookups
  */
-int process_connect_shmem(seL4_Word length_bytes,
-                          process_handle_t *handle1, seL4_CapRights_t perms1, 
-                          process_handle_t *handle2, seL4_CapRights_t perms2);
+int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1, 
+                          process_handle_t *handle2, seL4_CapRights_t perms2,
+                          seL4_Word num_pages,
+                          const char *conn_name);
 
-
-
-/****** Thread Configuration ******/
 
 /**
- * @brief Add a worker thread to the new process.
+ * @brief Connect two processes with a new notification endpoint
  *
- * Thread is started by the new process.
- * 
- * @param   handle
- * @param   stack_size_pages    Thread's stack space to allocate in pages
- * @param   priority            Threads's priority
- * @param   priority            Threads's core affinity, ignored for single core systems
- * @return                      Error code
+ * @param   handle1     First process to give new ep
+ * @param   perms1      Permissions to give first process
+ * @param   handle1     Second process to give new ep
+ * @param   perms1      Permissions to give Second process
+ * @param   conn_name   Name of the connection for lookups
  */
-int process_add_thread(process_handle_t *handle, 
-                       seL4_Word stack_size_pages,
-                       seL4_Word priority,
-                       seL4_Word cpu_affinity);
-
+int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t perms1,
+                                 process_handle_t *handle2, seL4_CapRights_t perms2,
+                                 const char *conn_name);
 
 
 /****** Advanced Configuration ******/
@@ -141,10 +139,9 @@ int process_add_thread(process_handle_t *handle,
 /**
  * @brief Give a process a chunk of untyped memory.
  *
- * Giving a process access to untyped memory will allow it to manage its own page tables.
- * This will allow malloc to be backed by virtual memory. This also means that it can use
- * that memory to create it's own kernel objects to start new threads and processes. To
- * do this, the root task is giving away part of its own untyped memory chunks.
+ * Give memory for a process to create it's own kernel objects to start new threads
+ * and processes. To do this, the root task is giving away part of its own untyped
+ * memory chunks.
  *
  * @warning Adding untyped memory will allow this process to create new threads and processes.
  * 
@@ -152,10 +149,11 @@ int process_add_thread(process_handle_t *handle,
  * @param   length_bytes    Size of the untyped chunk to give over.
  * @return                  Error code
  */
-int process_add_untyped_memory(process_handle_t *handle, seL4_Word length_bytes);
+int process_give_untyped_memory(process_handle_t *handle, seL4_Word length_bytes);
 
 
-/* TODO: finish api and doc */
+
+/* TODO: PHASE 2 API DESIGN */
 //int process_add_endpoint(process_handle_t *handle, vka_object_t ep);
 //int process_add_notification(process_handle_t *handle, vka_object_t ep);
 //int process_map_pages(process_handle_t *handle, void *vaddr, seL4_Word num_pages);

@@ -40,7 +40,7 @@
 /**
  * Print a hello world message, character by character. 
  */
-static void fancy_hello_world() { 
+UNUSED static void fancy_hello_world() { 
     static const char hello_msg[] = "\n\nI'm sorry, Dave. I'm afraid I can't do that. \n.\n.\n.\n";
     
     for(int i = 0; i < sizeof(hello_msg)/sizeof(hello_msg[0]) - 1; i++) {
@@ -58,9 +58,51 @@ static void fancy_hello_world() {
 int main(void) {
     init_root_task();
 
-    fancy_hello_world();
+    //fancy_hello_world();
 
-    seL4_DebugSnapshot();
+
+    process_handle_t child1, child2;
+
+    process_create("example_child", /* File name */
+                   "child1",        /* Process name */
+                   256,             /* Number of heap pages */
+                   256,             /* Number of stack pages */
+                   seL4_MaxPrio,    /* Priority */
+                   0,               /* CPU Affinity */
+                   &child1);
+
+    process_create("example_child", /* File name */
+                   "child2",        /* Process name */
+                   256,             /* Number of heap pages */
+                   256,             /* Number of stack pages */
+                   seL4_MaxPrio,    /* Priority */
+                   0,               /* CPU Affinity */
+                   &child2);
+
+
+    process_connect_shmem(&child1, seL4_CanWrite,
+                          &child2, seL4_CanRead,
+                          1,                /* Number of pages */
+                          "echo1-shmem");   /* shmem name */
+    process_connect_notification(&child1, seL4_CanWrite,
+                                 &child2, seL4_CanRead,
+                                 "echo1-notif");   /* ep name */
+
+    
+    process_connect_shmem(&child1, seL4_CanRead,
+                          &child2, seL4_CanWrite,
+                          1,                /* Number of pages */
+                          "echo2-shmem");   /* shmem name */
+    process_connect_notification(&child1, seL4_CanRead,
+                                 &child2, seL4_CanWrite,
+                                 "echo2-notif");   /* ep name */
+
+
+    process_give_untyped_memory(&child1, 65536);
+    process_give_untyped_memory(&child2, 65536);
+
+    process_run(&child1);
+    process_run(&child2);
 
     return 0;
 }

@@ -28,4 +28,71 @@
 
 #include <process/process.h>
 
+int process_create(const char *elf_file_name,
+                   const char *proc_name,
+                   seL4_Word heap_size_pages,
+                   seL4_Word stack_size_pages,
+                   seL4_Word priority,
+                   seL4_Word cpu_affinity,
+                   process_handle_t *handle)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+void process_run(process_handle_t *handle)
+{
+    /* TODO: Implement */
+}
+
+
+int process_add_device_pages(process_handle_t *handle, void *paddr, seL4_Word num_pages)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+int process_add_device_irq(process_handle_t *handle, int irq_number)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
+                       process_handle_t *handle2, seL4_CapRights_t perms2,
+                       const char *conn_name)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1, 
+                          process_handle_t *handle2, seL4_CapRights_t perms2,
+                          seL4_Word num_pages,
+                          const char *conn_name)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t perms1,
+                                 process_handle_t *handle2, seL4_CapRights_t perms2,
+                                 const char *conn_name)
+{
+    /* TODO: Implement */
+    return 0;
+}
+
+
+
+int process_give_untyped_memory(process_handle_t *handle, seL4_Word length_bytes)
+{
+    /* TODO: Implement */
+    return 0;
+}
 
