@@ -47,14 +47,19 @@ void process_run(process_handle_t *handle)
 }
 
 
-int process_add_device_pages(process_handle_t *handle, void *paddr, seL4_Word num_pages)
+int process_add_device_pages(process_handle_t *handle, 
+                             void *paddr,
+                             seL4_Word num_pages,
+                             const char* device_name)
 {
     /* TODO: Implement */
     return 0;
 }
 
 
-int process_add_device_irq(process_handle_t *handle, int irq_number)
+int process_add_device_irq(process_handle_t *handle,
+                           int irq_number,
+                           const char* device_name)
 {
     /* TODO: Implement */
     return 0;
@@ -90,7 +95,9 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
 
 
 
-int process_give_untyped_memory(process_handle_t *handle, seL4_Word length_bytes)
+int process_give_untyped_resources(process_handle_t *handle,
+                                   seL4_Word length_bytes,
+                                   seL4_Word num_objects)
 {
     /* TODO: Implement */
     return 0;

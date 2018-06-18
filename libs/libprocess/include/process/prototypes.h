@@ -73,18 +73,25 @@ void process_run(process_handle_t *handle);
  * @param   handle          Target process vspace
  * @param   paddr           Starting physical memory address of device region to map
  * @param   length_bytes    Size of region to map
+ * @param   device_name     Name of the device resource for lookups
  * @return                  Error code
  */
-int process_add_device_pages(process_handle_t *handle, void *paddr, seL4_Word num_pages);
+int process_add_device_pages(process_handle_t *handle,
+                             void *paddr,
+                             seL4_Word num_pages,
+                             const char *device_name);
 
 /**
  * @brief Delegate a device interrupt to a given process.
  *
  * @param   handle      Target process to give irq
  * @param   irq_number  Hardware interrupt number to give
+ * @param   device_name Name of the device resource for lookups
  * @return              Error code
  */
-int process_add_device_irq(process_handle_t *handle, int irq_number);
+int process_add_device_irq(process_handle_t *handle,
+                           int irq_number, 
+                           const char * device_name);
 
 
 
@@ -140,21 +147,37 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
  * @brief Give a process a chunk of untyped memory.
  *
  * Give memory for a process to create it's own kernel objects to start new threads
- * and processes. To do this, the root task is giving away part of its own untyped
- * memory chunks.
+ * and processes. It can also dynamically allocate memory. To do this, the root task
+ * is giving away part of its own untyped memory chunks.
  *
  * @warning Adding untyped memory will allow this process to create new threads and processes.
  * 
  * @param   handle          Target process
  * @param   length_bytes    Size of the untyped chunk to give over.
+ * @param   num_objects     Size of the untyped chunk to give over.
  * @return                  Error code
  */
-int process_give_untyped_memory(process_handle_t *handle, seL4_Word length_bytes);
+int process_give_untyped_resources(process_handle_t *handle, 
+                                   seL4_Word length_bytes, 
+                                   seL4_Word num_objects);
 
 
 
-/* TODO: PHASE 2 API DESIGN */
+/* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
+/* Simple defaults */
+//int process_create_default(process_handle_t * handle);
+//int process_connect_ep_one_way(process_handle_t * handle1, process_handle_t *handle2);
+//int process_connect_ep_two_way(process_handle_t * handle1, process_handle_t *handle2);
+
+/* Manual configuration */
+//int process_add_thread(process_handle_t* handle ...);
 //int process_add_endpoint(process_handle_t *handle, vka_object_t ep);
 //int process_add_notification(process_handle_t *handle, vka_object_t ep);
 //int process_map_pages(process_handle_t *handle, void *vaddr, seL4_Word num_pages);
+
+/* Sync stuff */
+//int process_add_semaphore(...)
+
+/* Debugging, listing */
+//void process_print_children(void);
 

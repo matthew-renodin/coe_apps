@@ -37,3 +37,62 @@ int init(void);
 int init_root_task(void);
 
 
+/**
+ * @brief Get the fault ep from the init data
+ *
+ * @return Capability slot of the fault ep.
+ */
+seL4_CPtr init_get_fault_ep();
+
+
+/**
+ * @breif Lookup an endpoint with a given string name
+ *
+ * @return Capability slot of the requested ep.
+ */
+seL4_CPtr init_lookup_ep(const char *);
+
+
+/**
+ * @breif Lookup a notification endpoint with a given string name
+ *
+ * @return Capability slot of the requested ep.
+ */
+seL4_CPtr init_lookup_notification(const char *);
+
+/**
+ * @brief Lookup shared memory with a given string name
+ *
+ * @return A pointer to the shared memory region.
+ */
+void * init_lookup_shmem(const char *);
+
+
+/**
+ * @brief Lookup an IRQ notification ep that was given to us with a string name.
+ *
+ * This searches the init data for IRQs that our parent process gave to us.
+ * Don't use this in the root task.
+ *
+ * @return Capability to the notification ep.
+ */
+seL4_CPtr init_lookup_irq(const char *);
+
+
+/**
+ * @brief Lookup a given device memory with a given string name
+ *
+ * This searches the init data for device mappings that our parent process gave to us.
+ * Don't use this in the root task.
+ *
+ * @return A pointer to the shared memory region.
+ */
+void * init_lookup_device_addr(const char *);
+
+
+
+/* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
+
+//  init_list_devices(...)
+//  init_list_connections(...)
+

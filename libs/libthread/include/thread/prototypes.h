@@ -32,16 +32,63 @@
 
 #include "types.h"
 
-int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void *arg);
 
+/**
+ * @brief Create a new thread handle and populate it with new thread objects
+ *
+ * @param       stack_size_pages    Number of pages to map for the stack.
+ * @param       priority            New thread's priority
+ * @param       cpu_affinity        New thread's CPU affinity
+ * @param[out]  handle              Handle to initialize
+ * @return                          Error code, TODO: thread id?
+ */
 int thread_handle_create(seL4_Word stack_size_pages,
                          seL4_Word priority,
                          seL4_Word cpu_affinity,
                          thread_handle_t *handle);
 
-//int thread_handle_create_remote();
+
+/**
+ * @brief Start a thread's execution.
+ *
+ * @param   handle          Target thread handle
+ * @param   start_routine   Function to begin execution
+ * @param   arg             Argument to pass to new thread
+ * @return                  Error code
+ */
+int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void *arg);
 
 
-int thread_handle_get(seL4_Word id, thread_handle_t *handle);
+/**
+ * @brief configure a thread with a string name.
+ *
+ * @param   handle  Target thread handle
+ * @param   name    New thread name
+ */
+void thread_set_name(thread_handle_t *handle, const char *name);
 
 
+/**
+ * @brief Get the id of the currently executing thread.
+ *
+ * @return The ID
+ */
+seL4_Word thread_get_id();
+
+
+/**
+ * @brief Get a thread handle given a thread ID.
+ *
+ * @return The handle
+ */
+thread_handle_t * thread_handle_get(seL4_Word id);
+
+
+
+/* ~~~ TODO: API PHASE 2 ~~~ */
+
+/* simple defaults */
+//int thread_handle_create_default(thread_handle_t *handle);
+
+/* debugging, listing */
+//void thread_print_threads(void);

@@ -38,14 +38,14 @@
 #include <sel4platsupport/bootinfo.h>
 #include <sel4platsupport/platsupport.h>
 #include <sel4platsupport/serial.h>
-#include <utils/zf_log.h>
-#include <sel4utils/sel4_zf_logif.h>
+#include <utils/util.h>
 #include <sel4utils/vspace.h>
 
 #include <init/init.h>
 
 
 #include "init_data.pb-c.h"
+
 
 /* Internal bookeeping variables for a process
  * These object operate at various layers 
@@ -81,7 +81,7 @@ static allocman_t *allocman;
 static simple_t simple;
 static seL4_BootInfo *info;
 
-static serial_objects_t serial_objects;
+UNUSED static serial_objects_t serial_objects;
 
 
 /* In order for allocman to start bookkeeping it needs memory. 
@@ -96,13 +96,12 @@ static void *  allocman_dynamic_pool;
 static sel4utils_alloc_data_t vspace_bootstrap_data;
 
 static void print_coe_banner(void) {
-    printf(
-            "   __________  ____   _____     ____\n"
-            "  / __/ __/ / / / /  / ___/__  / __/\n"
-            " _\\ \\/ _// /_/_  _/ / /__/ _ \\/ _/  \n"
-            "/___/___/____//_/   \\___/\\___/___/  \n"
-            "                                    \n");
-    printf("Copyright 2018 IAI.\n\nSetting up...\n");  
+    printf("\n"
+           "   __________  ____   _____     ____\n"
+           "  / __/ __/ / / / /  / ___/__  / __/\n"
+           " _\\ \\/ _// /_/_  _/ / /__/ _ \\/ _/  \n"
+           "/___/___/____//_/   \\___/\\___/___/  \n\n");
+    printf("Setting up root task.\n"); 
 }
 
 
@@ -110,6 +109,7 @@ int init(void) {
     /* TODO: In progress */
     return 0;
 }
+
 
 int init_root_task(void) {
     int error;
@@ -200,6 +200,9 @@ int init_root_task(void) {
 
 
 
+
+
+
     /* SIMPLE EXAMPLE OF PROTOBUF-C */
 
     InitData init = INIT_DATA__INIT;
@@ -215,19 +218,12 @@ int init_root_task(void) {
     }
     init.proc_name = "Charlie";
 
-
-    printf("Packed size: %i\n", init_data__get_packed_size(&init));
-
     void *buf = malloc(init_data__get_packed_size(&init));
     int size = init_data__pack(&init, buf);
 
     
-    printf("Packed size: %i\n", size);
+    printf("\nPacked size: %i\n", size);
 
-
-     
-    
-    
 
     return 0;
 }

@@ -24,6 +24,7 @@
  *
  */
 
+
 /* Include Kconfig variables. */
 #include <autoconf.h>
 
@@ -31,6 +32,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+
+/* Include seL4 Libraries */
+#include <sel4/sel4.h>
+#include <utils/util.h>
 
 /* Include seL4 COE library headers */
 #include <init/init.h>
@@ -56,50 +61,64 @@ UNUSED static void fancy_hello_world() {
  * Demo entry point after kernel boots.
  */
 int main(void) {
+    int err;
+
     init_root_task();
-
-    //fancy_hello_world();
-
 
     process_handle_t child1, child2;
 
-    process_create("example_child", /* File name */
-                   "child1",        /* Process name */
-                   256,             /* Number of heap pages */
-                   256,             /* Number of stack pages */
-                   seL4_MaxPrio,    /* Priority */
-                   0,               /* CPU Affinity */
-                   &child1);
-
-    process_create("example_child", /* File name */
-                   "child2",        /* Process name */
-                   256,             /* Number of heap pages */
-                   256,             /* Number of stack pages */
-                   seL4_MaxPrio,    /* Priority */
-                   0,               /* CPU Affinity */
-                   &child2);
+    err = process_create("example_child", /* File name */
+                         "child1",        /* Process name */
+                         256,             /* Number of heap pages */
+                         256,             /* Number of stack pages */
+                         seL4_MaxPrio,    /* Priority */
+                         0,               /* CPU Affinity */
+                         &child1);
+    ZF_LOGF_IF(err, "Failed to create child1");
 
 
-    process_connect_shmem(&child1, seL4_CanWrite,
-                          &child2, seL4_CanRead,
-                          1,                /* Number of pages */
-                          "echo1-shmem");   /* shmem name */
-    process_connect_notification(&child1, seL4_CanWrite,
-                                 &child2, seL4_CanRead,
-                                 "echo1-notif");   /* ep name */
+    err = process_create("example_child", /* File name */
+                         "child2",        /* Process name */
+                         256,             /* Number of heap pages */
+                         256,             /* Number of stack pages */
+                         seL4_MaxPrio,    /* Priority */
+                         1,               /* CPU Affinity */
+                         &child2);
+    ZF_LOGF_IF(err, "Failed to create child2");
 
-    
-    process_connect_shmem(&child1, seL4_CanRead,
-                          &child2, seL4_CanWrite,
-                          1,                /* Number of pages */
-                          "echo2-shmem");   /* shmem name */
-    process_connect_notification(&child1, seL4_CanRead,
+
+
+
+    err = process_connect_shmem(&child1, seL4_CanWrite,
+                                &child2, seL4_CanRead,
+                                1,                /* Number of pages */
+                                "echo1-shmem");   /* shmem name */
+    ZF_LOGF_IF(err, "Failed to create shared memory");
+
+    err = process_connect_notification(&child1, seL4_AllRights,
+                                       &child2, seL4_CanRead,
+                                       "echo1-notif");   /* ep name */
+    ZF_LOGF_IF(err, "Failed to create notification ep");
+
+
+
+    err = process_connect_shmem(&child1, seL4_CanRead,
+                                &child2, seL4_CanWrite,
+                                1,                /* Number of pages */
+                                "echo2-shmem");   /* shmem name */
+    ZF_LOGF_IF(err, "Failed to create shared memory");
+
+    err = process_connect_notification(&child1, seL4_CanRead,
                                  &child2, seL4_CanWrite,
                                  "echo2-notif");   /* ep name */
+    ZF_LOGF_IF(err, "Failed to create notification ep");
 
 
-    process_give_untyped_memory(&child1, 65536);
-    process_give_untyped_memory(&child2, 65536);
+
+
+    /* Give each process 16 MB of untyped kernel objects */
+    err = process_give_untyped_resources(&child1, 1024 * 1024, 16);
+    err = process_give_untyped_resources(&child2, 1024 * 1024, 16);
 
     process_run(&child1);
     process_run(&child2);
