@@ -31,14 +31,17 @@
 #include <thread/thread.h>
 
 /**
- * @brief Collect all the capabilities to a process's resources.
+ *
  */
-typedef struct process_caps {
-    seL4_CPtr cnode_cap;
-    seL4_CPtr page_dir_cap;
-    seL4_CPtr fault_ep_cap;
-    //seL4_CPtr untyped_resources_cap;
-} process_caps_t;
+typedef struct process_attr {
+    seL4_Word heap_size_pages;
+    seL4_Word stack_size_pages;
+
+    seL4_Word priority;
+    seL4_Word cpu_affinity;
+
+    seL4_Word cnode_size_bits;
+} process_attr_t;
 
 
 /**
@@ -51,15 +54,8 @@ typedef struct process_handle {
 
     char *name;
 
-    /* Local caps to a child process */
-    process_caps_t local;
-
-    /* Child processes' copy of it caps. */ 
-    process_caps_t remote;
-
-
-    thread_handle_t *thread_list_head;
-    thread_handle_t *thread_list_tail;
+    vka_object_t cnode;
+    vka_object_t fault_ep;
 
 } process_handle_t;
 

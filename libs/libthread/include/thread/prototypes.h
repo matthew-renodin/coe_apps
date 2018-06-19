@@ -92,3 +92,6 @@ thread_handle_t * thread_handle_get(seL4_Word id);
 
 /* debugging, listing */
 //void thread_print_threads(void);
+
+//thread suspend and resume
+//thread terminate join?

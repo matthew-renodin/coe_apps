@@ -29,7 +29,7 @@
 /**
  * @brief Initializes the necessary userspace bookeeping for a single process.
  */
-int init(void);
+int init_process(void);
 
 /**
  * @brief Initializes the necesarry bookeeping for the root task using seL4_BootInfo.
@@ -88,6 +88,10 @@ seL4_CPtr init_lookup_irq(const char *);
  * @return A pointer to the shared memory region.
  */
 void * init_lookup_device_addr(const char *);
+
+
+
+
 
 
 

@@ -4,7 +4,7 @@
 #
 ###############################################################################
 
-config LIB_PROCESS
+menuconfig LIB_PROCESS
     bool "libprocess"
     depends on HAVE_LIB_SEL4 && HAVE_LIBC
     select HAVE_SEL4_LIBS
@@ -12,4 +12,37 @@ config LIB_PROCESS
     help
         A library to help manage starting, destroying, and configuring processes. 
 
+config LIB_PROCESS_DEFAULT_HEAP_SIZE_PAGES
+    int "Default heap size pages"
+    depends on LIB_PROCESS
+    default 256
+    help
+        Unless a process_attr_t is given, this default value will be set.
 
+config LIB_PROCESS_DEFAULT_STACK_SIZE_PAGES
+    int "Default stack size pages"
+    depends on LIB_PROCESS
+    default 256
+    help
+        Unless a process_attr_t is given, this default value will be set.
+
+config LIB_PROCESS_DEFAULT_PRIORITY
+    int "Default priority"
+    depends on LIB_PROCESS
+    default 15
+    help
+        Unless a process_attr_t is given, this default value will be set.
+
+config LIB_PROCESS_DEFAULT_CPU_AFFINITY
+    int "Default Core Affinity"
+    depends on LIB_PROCESS
+    default 0
+    help
+        Unless a process_attr_t is given, this default value will be set.
+
+config LIB_PROCESS_DEFAULT_CNODE_SIZE_BITS
+    int "Default cnode size bits"
+    depends on LIB_PROCESS
+    default 17
+    help
+        Unless a process_attr_t is given, this default value will be set.

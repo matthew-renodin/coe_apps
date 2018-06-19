@@ -30,27 +30,23 @@
 
 #include "types.h"
 
+
 /**
  * @brief Create a new process handle.
  * 
  * Setup a process handle struct with fresh kernel objects. 
  * Process won't begin until process_run is called.
  *
- * @param       elf_file_name       The name of the executable file to run
- * @param       heap_size_pages     Initial thread's heap space to allocate in pages
- * @param       stack_size_pages    Initial thread's stack space to allocate in pages
- * @param       priority            Initial threads's priority
- * @param       priority            Initial threads's core affinity, ignored for single core systems
- * @param[out]  handle              Handle to initalize
- * @return                          Error code
+ * @param       elf_file_name   The name of the executable file to run
+ * @param       attr            Optional attributes, use process_default_attrs for config defaults.
+ * @param[out]  handle          Handle to initalize
+ * @return                      Error code
  */
 int process_create(const char *elf_file_name,
                    const char *proc_name,
-                   seL4_Word heap_size_pages,
-                   seL4_Word stack_size_pages,
-                   seL4_Word priority,
-                   seL4_Word cpu_affinity,
+                   const process_attr_t *attr,
                    process_handle_t *handle);
+
 
 /**
  * @brief Start executing a new process.
@@ -61,7 +57,7 @@ int process_create(const char *elf_file_name,
  *
  * @param handle
  */
-void process_run(process_handle_t *handle);
+void process_run(process_handle_t *handle, int argc, char *argv[]);
 
 
 
@@ -163,6 +159,9 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 
 
+seL4_Word process_get_default_cnode_size(void);
+
+
 /* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
 /* Simple defaults */
 //int process_create_default(process_handle_t * handle);
@@ -180,4 +179,6 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 /* Debugging, listing */
 //void process_print_children(void);
+
+//process kill
 

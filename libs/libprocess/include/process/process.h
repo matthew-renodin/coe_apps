@@ -29,4 +29,5 @@
 
 #include <process/prototypes.h>
 #include <process/types.h>
+#include <process/globals.h>
 

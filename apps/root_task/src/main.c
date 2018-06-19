@@ -69,20 +69,14 @@ int main(void) {
 
     err = process_create("example_child", /* File name */
                          "child1",        /* Process name */
-                         256,             /* Number of heap pages */
-                         256,             /* Number of stack pages */
-                         seL4_MaxPrio,    /* Priority */
-                         0,               /* CPU Affinity */
+                         &process_default_attrs,
                          &child1);
     ZF_LOGF_IF(err, "Failed to create child1");
 
 
     err = process_create("example_child", /* File name */
                          "child2",        /* Process name */
-                         256,             /* Number of heap pages */
-                         256,             /* Number of stack pages */
-                         seL4_MaxPrio,    /* Priority */
-                         1,               /* CPU Affinity */
+                         NULL,
                          &child2);
     ZF_LOGF_IF(err, "Failed to create child2");
 
@@ -120,8 +114,8 @@ int main(void) {
     err = process_give_untyped_resources(&child1, 1024 * 1024, 16);
     err = process_give_untyped_resources(&child2, 1024 * 1024, 16);
 
-    process_run(&child1);
-    process_run(&child2);
+    process_run(&child1, 0, NULL);
+    process_run(&child2, 0, NULL);
 
     return 0;
 }

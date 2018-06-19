@@ -28,4 +28,6 @@
 
 
 #include <init/prototypes.h>
+#include <init/types.h>
+#include <init/globals.h>
 

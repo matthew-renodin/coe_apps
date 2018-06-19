@@ -75,11 +75,11 @@
  * | caps to untyped objects            |
  * +------------------------------------+
  */
-static vspace_t vspace;
-static vka_t vka;
-static allocman_t *allocman;
-static simple_t simple;
-static seL4_BootInfo *info;
+
+/**
+ * Global variable for the bookkeeping objects.
+ */
+init_objects_t init_objects;
 
 UNUSED static serial_objects_t serial_objects;
 
@@ -118,6 +118,8 @@ int init_root_task(void) {
     if(run_once) {
         ZF_LOGF("This function may only be called once");    
     }
+    run_once = 1;
+
     
     zf_log_set_tag_prefix("root_task:");
 
@@ -126,35 +128,36 @@ int init_root_task(void) {
 #endif
 
 
-    info = platsupport_get_bootinfo();
-    ZF_LOGF_IF(info == NULL, "Failed to get bootinfo.");
+    init_objects.info = platsupport_get_bootinfo();
+    ZF_LOGF_IF(init_objects.info == NULL, "Failed to get bootinfo.");
 
     /* Initialize the simple structure's function pointers,
      * Simple manages our bootinfo struct for us. */
-    simple_default_init_bootinfo(&simple, info);
+    simple_default_init_bootinfo(&init_objects.simple, init_objects.info);
 
 
     /* Setup allocman with a static pool to bootstrap its bookkeeping.
      * Since we are providing it our simple struct it will fill itself
      * with untyped memory chunks from the bootinfo.
      */
-    allocman = bootstrap_use_current_simple(&simple, 
+    init_objects.allocman = bootstrap_use_current_simple(
+                                            &init_objects.simple, 
                                             CONFIG_LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES,
                                             allocman_static_pool);
-    ZF_LOGF_IF(allocman == NULL, "Failed to bootstrap allocman.");
+    ZF_LOGF_IF(init_objects.allocman == NULL, "Failed to bootstrap allocman.");
 
     /* Initialize the vka object's function pointers.
      * The vka is now backed by the untyped memory in allocman. */
-    allocman_make_vka(&vka, allocman);
+    allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
     /* Setup the vspace object. This bookkeeps/manages the virtual memory mappings.
      * We don't want vspace to free objects so we use the "leaky" call.
      */
-    error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&vspace, 
-                                                   &vspace_bootstrap_data,
-                                                   simple_get_pd(&simple),
-                                                   &vka,
-                                                   info);
+    error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&init_objects.vspace, 
+                                                           &vspace_bootstrap_data,
+                                                           simple_get_pd(&init_objects.simple),
+                                                           &init_objects.vka,
+                                                           init_objects.info);
     ZF_LOGF_IF(error, "Failed to bootstrap vspace");
 
 
@@ -166,7 +169,7 @@ int init_root_task(void) {
     reservation_t reservation;
 
     /* Dynamically allocate a new big array/pool of memory using vspace (backed by vka). */
-    reservation = vspace_reserve_range(&vspace,
+    reservation = vspace_reserve_range(&init_objects.vspace,
                                        CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
                                        seL4_AllRights,
                                        1, /* Cacheable */
@@ -175,10 +178,10 @@ int init_root_task(void) {
     
 
     /* Use the newly allocated pool as bookkeeping space for allocman. */
-    bootstrap_configure_virtual_pool(allocman, 
+    bootstrap_configure_virtual_pool(init_objects.allocman, 
                                      allocman_dynamic_pool,
                                      CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
-                                     simple_get_pd(&simple));
+                                     simple_get_pd(&init_objects.simple));
 
 
 
@@ -189,17 +192,17 @@ int init_root_task(void) {
      * TODO: implement a solution here
      */
     //sel4platsupport_init_default_serial_caps(&vka, &vspace, &simple, &serial_objects);
-    platsupport_serial_setup_simple(&vspace, &simple, &vka);
+    platsupport_serial_setup_simple(&init_objects.vspace, &init_objects.simple, &init_objects.vka);
 
 
 
     print_coe_banner();
 
     /* This will print the available untypeds */
-    simple_print(&simple);
+    simple_print(&init_objects.simple);
 
 
-
+    init_objects.initialized = 1;
 
 
 
@@ -223,7 +226,6 @@ int init_root_task(void) {
 
     
     printf("\nPacked size: %i\n", size);
-
 
     return 0;
 }

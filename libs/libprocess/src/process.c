@@ -26,22 +26,49 @@
 
 #include <sel4/sel4.h>
 
+#include <init/init.h>
 #include <process/process.h>
+
+
+
+const process_attr_t process_default_attrs = {
+    .heap_size_pages    = CONFIG_LIB_PROCESS_DEFAULT_HEAP_SIZE_PAGES,
+    .stack_size_pages   = CONFIG_LIB_PROCESS_DEFAULT_STACK_SIZE_PAGES,
+    .priority           = CONFIG_LIB_PROCESS_DEFAULT_PRIORITY,
+    .cpu_affinity       = CONFIG_LIB_PROCESS_DEFAULT_CPU_AFFINITY,
+    .cnode_size_bits    = CONFIG_LIB_PROCESS_DEFAULT_CNODE_SIZE_BITS,
+};
+
 
 int process_create(const char *elf_file_name,
                    const char *proc_name,
-                   seL4_Word heap_size_pages,
-                   seL4_Word stack_size_pages,
-                   seL4_Word priority,
-                   seL4_Word cpu_affinity,
+                   const process_attr_t *attr,
                    process_handle_t *handle)
 {
-    /* TODO: Implement */
+    int error;
+
+    if(!init_objects.initialized) return -1;
+
+    if(handle == NULL) return -2; /* TODO come up with error codes */
+    handle->running = 0;
+
+
+    if(attr == NULL) {
+        attr = &process_default_attrs;
+    }
+
+    /* TODO: Implement sync for init objects */
+    error = vka_alloc_cnode_object(&init_objects.vka, attr->cnode_size_bits, &handle->cnode);
+
+    
+    
+    
+
     return 0;
 }
 
 
-void process_run(process_handle_t *handle)
+void process_run(process_handle_t *handle, int argc, char *argv[])
 {
     /* TODO: Implement */
 }
@@ -102,4 +129,6 @@ int process_give_untyped_resources(process_handle_t *handle,
     /* TODO: Implement */
     return 0;
 }
+
+
 
