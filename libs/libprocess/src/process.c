@@ -23,10 +23,12 @@
  * @brief Core libprocess implementation.
  *
  */
+#include <autoconf.h>
 
 #include <sel4/sel4.h>
 
 #include <init/init.h>
+#include <vka/capops.h>
 #include <process/process.h>
 
 
@@ -47,22 +49,62 @@ int process_create(const char *elf_file_name,
 {
     int error;
 
+    /* TODO: Implement sync for init objects */
     if(!init_objects.initialized) return -1;
 
     if(handle == NULL) return -2; /* TODO come up with error codes */
     handle->running = 0;
 
 
-    if(attr == NULL) {
-        attr = &process_default_attrs;
-    }
+    /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
+    handle->attrs = (attr == NULL) ? process_default_attrs : *attr;
+ 
 
-    /* TODO: Implement sync for init objects */
-    error = vka_alloc_cnode_object(&init_objects.vka, attr->cnode_size_bits, &handle->cnode);
+    /**
+     * Create all the objects that are shared among the threads in a process
+     */
+    error = vka_alloc_cnode_object(&init_objects.vka,
+                                   handle->attrs.cnode_size_bits,
+                                   &handle->cnode);
+    if(error) return error;
+    
+    error = vka_alloc_endpoint(&init_objects.vka, &handle->fault_ep);
+    if(error) return error;
 
+    error = vka_alloc_vspace_root(&init_objects.vka, &handle->page_dir);
+    if(error) return error;
+
+
+#ifndef CONFIG_ARCH_X86_64
+    /**
+     * Assign the new vspace to our current asid_pool. If a process doesn't 
+     * have a pool cap, then it cannot create address spaces
+     */
+    error = seL4_ARCH_ASIDPool_Assign(init_objects.asid_pool_cap, handle->page_dir.cptr);
+    if(error != seL4_NoError) return error;
+#endif
+
+    /**
+     * Copy caps to new cnode
+     */
+    cspacepath_t dst, src;
+    dst.root = handle->cnode.cptr;
+    dst.capDepth = handle->attrs.cnode_size_bits;
     
+    dst.capPtr = INIT_CHILD_CNODE_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->cnode.cptr, &src);
+    vka_cnode_copy(&dst, &src, seL4_AllRights);
     
-    
+    dst.capPtr = INIT_CHILD_FAULT_EP_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->fault_ep.cptr, &src);
+    vka_cnode_copy(&dst, &src, seL4_AllRights);
+
+    dst.capPtr = INIT_CHILD_PAGE_DIR_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->page_dir.cptr, &src);
+    vka_cnode_copy(&dst, &src, seL4_AllRights);
+
+
+    handle->cnode_next_free = INIT_CHILD_FIRST_FREE_SLOT;
 
     return 0;
 }

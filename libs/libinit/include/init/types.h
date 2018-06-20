@@ -27,4 +27,8 @@ typedef struct init_objects {
     simple_t simple;
     seL4_BootInfo *info;
 
+    /* We can abstract away from boot info here */
+    seL4_CPtr asid_pool_cap;
+    seL4_CPtr asid_control_cap;
+
 } init_objects_t;
