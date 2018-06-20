@@ -67,14 +67,14 @@ int main(void) {
 
     process_handle_t child1, child2;
 
-    err = process_create("example_child", /* File name */
+    err = process_create("child_example", /* File name */
                          "child1",        /* Process name */
                          &process_default_attrs,
                          &child1);
     ZF_LOGF_IF(err, "Failed to create child1");
 
 
-    err = process_create("example_child", /* File name */
+    err = process_create("child_example", /* File name */
                          "child2",        /* Process name */
                          NULL,
                          &child2);

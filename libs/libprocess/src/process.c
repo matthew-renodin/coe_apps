@@ -155,7 +155,15 @@ int process_create(const char *elf_file_name,
     /**
      * Setup the first thread in our new process
      */
-    //thread_handle_create_custom(
+    error = thread_handle_create_custom(handle->fault_ep.cptr,
+                                        handle->page_dir.cptr,
+                                        &handle->vspace,
+                                        handle->attrs.stack_size_pages,
+                                        handle->attrs.priority,
+                                        handle->attrs.cpu_affinity,
+                                        &handle->main_thread);
+    if(error) return error;
+
 
 
     handle->cnode_next_free = INIT_CHILD_FIRST_FREE_SLOT;

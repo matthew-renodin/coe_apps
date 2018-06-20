@@ -132,7 +132,7 @@ static void print_cpio_data(void) {
 }
 
 
-int init(void) {
+int init_process(void) {
     /* TODO: In progress */
     return 0;
 }

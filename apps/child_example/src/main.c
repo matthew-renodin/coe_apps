@@ -38,9 +38,11 @@
 #include <init/init.h>
 #include <thread/thread.h>
 
+char _cpio_archive[1]; /* TODO remove */
+
 
 void * worker_thread(void *cookie) {
-    printf("Worker thread %i: Made it!\n", thread_get_id());
+    printf("Worker thread %lu: Made it!\n", thread_get_id());
 
     
 
@@ -52,7 +54,7 @@ void * worker_thread(void *cookie) {
  * Demo entry point
  */
 int main(void) {
-    init();
+    init_process();
 
     thread_handle_t worker;
     thread_handle_create(256, seL4_MaxPrio, 0, &worker);

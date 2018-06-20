@@ -18,6 +18,8 @@ CFILES   += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/arch/${ARC
 ASMFILES := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/arch/${ARCH}/*.S))
 ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLAT}/*.S))
 
+OFILES := archive.o
+
 
 ###############################################################################
 # LIBRARIES
@@ -43,5 +45,6 @@ ${COMPONENTS}:
 	false
 
 archive.o: ${COMPONENTS}
+	@echo " [GEN_CPIO] $@"
 	$(Q)mkdir -p $(dir $@)
 	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^

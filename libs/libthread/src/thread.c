@@ -57,7 +57,25 @@ int thread_handle_create_custom(seL4_CPtr fault_ep,
     /**
      * Allocate the stack somewhere
      */
-     //vspace_reserve_range(vspace,
+    reservation_t res = vspace_reserve_range(vspace,
+                                             stack_size_pages * PAGE_SIZE_4K,
+                                             seL4_AllRights,
+                                             1,
+                                             &handle->stack_vaddr);
+    if(res.res == 0) {
+        ZF_LOGW("Failed to reserve stack space");
+        return -3;
+    }
+
+     error = vspace_new_pages_at_vaddr(vspace,
+                                       handle->stack_vaddr,
+                                       stack_size_pages,
+                                       PAGE_BITS_4K,
+                                       res);
+    if(error) {
+        ZF_LOGW("Failed to map stack space");
+        return error;
+    }
 
     return 0;
 

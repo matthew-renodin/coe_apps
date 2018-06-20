@@ -28,13 +28,11 @@
 
 
 #include <sel4/sel4.h>
-#include <thread/thread.h>
-
-
 #include <vka/vka.h>
 #include <vspace/vspace.h>
 #include <sel4utils/vspace.h>
 
+#include <thread/thread.h>
 /**
  *
  */
@@ -71,6 +69,8 @@ typedef struct process_handle {
     sel4utils_alloc_data_t vspace_data;
 
     int cnode_next_free;
+
+    thread_handle_t main_thread;
 
 } process_handle_t;
 
