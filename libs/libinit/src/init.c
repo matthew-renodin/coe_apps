@@ -40,6 +40,7 @@
 #include <sel4platsupport/serial.h>
 #include <utils/util.h>
 #include <sel4utils/vspace.h>
+#include <cpio/cpio.h>
 
 #include <init/init.h>
 
@@ -84,6 +85,8 @@ init_objects_t init_objects;
 UNUSED static serial_objects_t serial_objects;
 
 
+
+
 /* In order for allocman to start bookkeeping it needs memory. 
  * This array is memory for it to bootstrap itself before untyped 
  * memory is accessable. After that it can allocate its own pages,
@@ -102,6 +105,30 @@ static void print_coe_banner(void) {
            " _\\ \\/ _// /_/_  _/ / /__/ _ \\/ _/  \n"
            "/___/___/____//_/   \\___/\\___/___/  \n\n");
     printf("Setting up root task.\n"); 
+}
+
+static void print_cpio_data(void) {
+    /* The linker will link this symbol to the start address  *
+     * of an archive of attached applications.                */
+    extern char _cpio_archive[];
+
+    printf("Parsing cpio data:\n");
+    printf("--------------------------------------------------------\n");
+    printf("| index |        name      |  address   | size (bytes) |\n");
+    printf("|------------------------------------------------------|\n");
+    for(int i = 0;; i++) {
+        unsigned long size;
+        const char *name;
+        void *data;
+
+        data = cpio_get_entry(_cpio_archive, i, &name, &size);
+        if(data != NULL){
+            printf("| %3d   | %16s | %p | %12lu |\n", i, name, data, size);
+        }else{
+            break;
+        }
+    }
+    printf("--------------------------------------------------------\n");
 }
 
 
@@ -201,12 +228,12 @@ int init_root_task(void) {
     /* This will print the available untypeds */
     simple_print(&init_objects.simple);
 
+    print_cpio_data();
+
 
     /* Create the bootinfo abstraction layer */
     init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
     init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
-
-    printf("ASID Pool Cap: %d\n", init_objects.asid_pool_cap);
 
 
     init_objects.initialized = 1;

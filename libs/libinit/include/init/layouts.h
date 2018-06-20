@@ -15,3 +15,11 @@
 #define INIT_CHILD_FAULT_EP_SLOT        2
 #define INIT_CHILD_FIRST_FREE_SLOT      3
 
+
+
+
+
+/**
+ * Child process memory layout. TODO: this is 100% arbitrary, fix
+ */
+#define INIT_CHILD_HEAP_ADDR            ((void *)0x70000000)

@@ -26,9 +26,13 @@
 #include <autoconf.h>
 
 #include <sel4/sel4.h>
+#include <vka/capops.h>
+#include <utils/util.h>
+#include <vspace/vspace.h>
+#include <sel4utils/vspace.h>
+#include <sel4utils/elf.h>
 
 #include <init/init.h>
-#include <vka/capops.h>
 #include <process/process.h>
 
 
@@ -93,15 +97,65 @@ int process_create(const char *elf_file_name,
     
     dst.capPtr = INIT_CHILD_CNODE_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->cnode.cptr, &src);
-    vka_cnode_copy(&dst, &src, seL4_AllRights);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) return error;
     
     dst.capPtr = INIT_CHILD_FAULT_EP_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->fault_ep.cptr, &src);
-    vka_cnode_copy(&dst, &src, seL4_AllRights);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) return error;
 
     dst.capPtr = INIT_CHILD_PAGE_DIR_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->page_dir.cptr, &src);
-    vka_cnode_copy(&dst, &src, seL4_AllRights);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) return error;
+
+    
+    /**
+     * Setup the new process's virtual memory bookkeeping object
+     */
+    error = sel4utils_get_vspace(&init_objects.vspace,
+                                 &handle->vspace,
+                                 &handle->vspace_data,
+                                 &init_objects.vka,
+                                 handle->page_dir.cptr,
+                                 NULL,  /* Optional function to call when objects are allocated */
+                                 NULL); /* Optional args. */
+    if(error) return error;    
+
+
+    /**
+     * Load the elf file into the new address space
+     */ 
+    handle->entry_point = sel4utils_elf_load(&handle->vspace,
+                                             &init_objects.vspace,
+                                             &init_objects.vka,
+                                             &init_objects.vka,
+                                             elf_file_name);
+
+
+    /**
+     * Allocate a heap and map it into the process's page directory.
+     */
+    reservation_t res = vspace_reserve_range_at(&handle->vspace,
+                                                INIT_CHILD_HEAP_ADDR,
+                                                handle->attrs.heap_size_pages * PAGE_SIZE_4K,
+                                                seL4_AllRights, /* TODO Prune heap perms? */
+                                                1);
+    if(res.res == 0) return -3;
+
+    error = vspace_new_pages_at_vaddr(&handle->vspace,
+                                      INIT_CHILD_HEAP_ADDR,
+                                      handle->attrs.heap_size_pages,
+                                      PAGE_BITS_4K,
+                                      res);
+    if(error) return error;
+
+
+    /**
+     * Setup the first thread in our new process
+     */
+    //thread_handle_create_custom(
 
 
     handle->cnode_next_free = INIT_CHILD_FIRST_FREE_SLOT;

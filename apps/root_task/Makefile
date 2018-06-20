@@ -24,6 +24,7 @@ ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLA
 ###############################################################################
 LIBS = c sel4 sel4muslcsys sel4simple sel4vka sel4allocman sel4platsupport \
        platsupport utils sel4simple-default sel4utils sel4debug sel4vspace \
+       elf cpio \
        process thread sync init
 
 
@@ -38,3 +39,9 @@ CFLAGS += -Werror -g
 ###############################################################################
 include $(SEL4_COMMON)/common.mk
 
+${COMPONENTS}:
+	false
+
+archive.o: ${COMPONENTS}
+	$(Q)mkdir -p $(dir $@)
+	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^

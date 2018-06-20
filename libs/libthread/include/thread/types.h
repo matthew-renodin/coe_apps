@@ -6,18 +6,15 @@
 #pragma once
 
 #include <sel4/sel4.h>
-
-typedef struct thread_caps {
-    seL4_CPtr tcb_cap;
-    seL4_CPtr ipc_buffer_cap;
-} thread_caps_t;
+#include <vka/vka.h>
 
 
 typedef struct thread_handle {
     //int lock;
 
     seL4_Word thread_id;
-    thread_caps_t caps;
+
+    vka_object_t tcb;
 
     void *stack_vaddr;
     seL4_Word stack_size_pages;

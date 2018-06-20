@@ -30,6 +30,11 @@
 #include <sel4/sel4.h>
 #include <thread/thread.h>
 
+
+#include <vka/vka.h>
+#include <vspace/vspace.h>
+#include <sel4utils/vspace.h>
+
 /**
  *
  */
@@ -54,11 +59,16 @@ typedef struct process_handle {
 
     char *name;
 
+    void* entry_point;
+
     process_attr_t attrs;
 
     vka_object_t cnode;
     vka_object_t fault_ep;
     vka_object_t page_dir;
+
+    vspace_t vspace;
+    sel4utils_alloc_data_t vspace_data;
 
     int cnode_next_free;
 
