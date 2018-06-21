@@ -57,7 +57,7 @@ int process_create(const char *elf_file_name,
  *
  * @param handle
  */
-void process_run(process_handle_t *handle, int argc, char *argv[]);
+int process_run(process_handle_t *handle, int argc, char *argv[]);
 
 
 

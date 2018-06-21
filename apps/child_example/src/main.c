@@ -41,33 +41,36 @@
 char _cpio_archive[1]; /* TODO remove */
 
 
-void * worker_thread(void *cookie) {
-    printf("Worker thread %lu: Made it!\n", thread_get_id());
-
-    
-
-    return NULL;
-}
+//void * worker_thread(void *cookie) {
+//    printf("Worker thread %lu: Made it!\n", thread_get_id());
+//
+//    
+//
+//    return NULL;
+//}
 
 
 /**
  * Demo entry point
  */
-int main(void) {
-    init_process();
+int main(int argc, char **argv) {
+    //init_process();
 
-    thread_handle_t worker;
-    thread_handle_create(256, seL4_MaxPrio, 0, &worker);
+    //thread_handle_t worker;
+    //thread_handle_create(256, seL4_MaxPrio, 0, &worker);
 
-    thread_start(&worker, worker_thread, NULL);
-
-
+    //thread_start(&worker, worker_thread, NULL);
+    //
+    //seL4_Recv(999, NULL);
+    printf("Made it into the child!\n");
+    while(1);
 
 
     /* TODO demo connection/ep communication */
 
     return 0;
 }
+
 
 
 /**

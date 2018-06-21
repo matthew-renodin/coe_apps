@@ -18,5 +18,8 @@ typedef struct thread_handle {
 
     void *stack_vaddr;
     seL4_Word stack_size_pages;
+
+    void *ipc_buffer_vaddr;
+    seL4_CPtr ipc_buffer_cap;
     
 } thread_handle_t;

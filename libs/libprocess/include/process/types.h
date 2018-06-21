@@ -31,6 +31,7 @@
 #include <vka/vka.h>
 #include <vspace/vspace.h>
 #include <sel4utils/vspace.h>
+#include <sel4utils/elf.h>
 
 #include <thread/thread.h>
 /**
@@ -55,9 +56,12 @@ typedef struct process_handle {
     //int lock;
     int running;
 
-    char *name;
+    const char *name;
 
     void* entry_point;
+    int num_elf_phdrs;
+    Elf_Phdr *elf_phdrs;
+    uintptr_t sysinfo;
 
     process_attr_t attrs;
 

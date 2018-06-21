@@ -234,6 +234,7 @@ int init_root_task(void) {
     /* Create the bootinfo abstraction layer */
     init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
     init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
+    init_objects.tcb_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadTCB);
 
 
     init_objects.initialized = 1;

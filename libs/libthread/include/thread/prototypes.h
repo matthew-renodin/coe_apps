@@ -85,7 +85,8 @@ thread_handle_t * thread_handle_get(seL4_Word id);
 
 
 
-int thread_handle_create_custom(seL4_CPtr fault_ep,
+int thread_handle_create_custom(seL4_CPtr cnode,
+                                seL4_CPtr fault_ep,
                                 seL4_CPtr page_dir,
                                 vspace_t *vspace,
                                 seL4_Word stack_size_pages,

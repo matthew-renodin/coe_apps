@@ -114,8 +114,14 @@ int main(void) {
     err = process_give_untyped_resources(&child1, 1024 * 1024, 16);
     err = process_give_untyped_resources(&child2, 1024 * 1024, 16);
 
-    process_run(&child1, 0, NULL);
-    process_run(&child2, 0, NULL);
+    char *argv1[] = { "child1" }; 
+    char *argv2[] = { "child2" }; 
+    process_run(&child1, 1, argv1);
+    process_run(&child2, 1, argv2);
+
+    seL4_DebugDumpScheduler();
+    seL4_Yield(); 
+    seL4_DebugDumpScheduler();
 
     return 0;
 }

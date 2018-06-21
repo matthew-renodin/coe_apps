@@ -30,5 +30,6 @@ typedef struct init_objects {
     /* We can abstract away from boot info here */
     seL4_CPtr asid_pool_cap;
     seL4_CPtr asid_control_cap;
+    seL4_CPtr tcb_cap;
 
 } init_objects_t;
