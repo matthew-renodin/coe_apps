@@ -30,6 +30,7 @@ seL4_Word thread_get_id() {
 
 
 int thread_handle_create_custom(seL4_CPtr cnode,
+                                seL4_Word cnode_root_data,
                                 seL4_CPtr fault_ep,
                                 seL4_CPtr page_dir,
                                 vspace_t *vspace,
@@ -80,7 +81,7 @@ int thread_handle_create_custom(seL4_CPtr cnode,
     error = seL4_TCB_Configure(handle->tcb.cptr,
                                fault_ep,
                                cnode,
-                               0,
+                               cnode_root_data,
                                page_dir,
                                0,
                                (seL4_Word)handle->ipc_buffer_vaddr,

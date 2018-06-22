@@ -30,6 +30,7 @@
 /* Include libc headers */
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #include <sel4/sel4.h>
@@ -56,13 +57,22 @@ char _cpio_archive[1]; /* TODO remove */
 int main(int argc, char **argv) {
     init_process();
 
+    printf("Looking up ep: %s\n", argv[1]);
+    seL4_CPtr ep_cap = init_lookup_ep(argv[1]);
+    printf("Found cap in slot: %d\n", (int)ep_cap);
+
+    if(strcmp(argv[0], "child1")) {
+        seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
+    } else {
+        seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
+        printf("Got message %lu\n",seL4_MessageInfo_get_label(msg));
+    }
+        
+
     //thread_handle_t worker;
     //thread_handle_create(256, seL4_MaxPrio, 0, &worker);
 
     //thread_start(&worker, worker_thread, NULL);
-    //
-    //seL4_Recv(999, NULL);
-    printf("Made it into the child!\n");
 
 
     /* TODO demo connection/ep communication */

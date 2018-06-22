@@ -1,5 +1,3 @@
-// A very simple protocol definition, consisting of only
-// one message.
 
 syntax = "proto2";
 

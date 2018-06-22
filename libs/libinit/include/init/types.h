@@ -10,6 +10,9 @@
 #include <vka/vka.h>
 #include <vspace/vspace.h>
 
+#include <init/init.h>
+#include "init_data.pb-c.h"
+
 /**
  * @brief Bookkeeping objects/managers/allocators
  *
@@ -31,5 +34,7 @@ typedef struct init_objects {
     seL4_CPtr asid_pool_cap;
     seL4_CPtr asid_control_cap;
     seL4_CPtr tcb_cap;
+
+    InitData *init_data;
 
 } init_objects_t;

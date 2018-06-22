@@ -74,6 +74,7 @@ typedef struct process_handle {
     vspace_t vspace;
     sel4utils_alloc_data_t vspace_data;
 
+    seL4_Word cnode_root_data;
     int cnode_next_free;
 
     thread_handle_t main_thread;

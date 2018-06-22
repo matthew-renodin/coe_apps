@@ -26,6 +26,7 @@
 #include <autoconf.h>
 
 #include <stdint.h>
+#include <string.h>
 
 #include <sel4/sel4.h>
 #include <vka/vka.h>
@@ -144,13 +145,15 @@ int init_process(void) {
      * Unpack the init data from our parent process.
      */
     seL4_Word size = *((seL4_Word *)INIT_CHILD_INIT_DATA_ADDR);
-    InitData *init_data = init_data__unpack(NULL, 
-                                            size,
-                                            INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
+    init_objects.init_data = init_data__unpack(NULL, 
+                                               size,
+                                               INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
 
-    printf("%s: Starting up!\n", init_data->proc_name);
+    printf("%s: Starting up!\n", init_objects.init_data->proc_name);
 
+    
 
+    init_objects.initialized = 1;
     return 0;
 }
 
@@ -283,4 +286,20 @@ int init_root_task(void) {
 }
 
 
+seL4_CPtr init_lookup_ep(const char * name)
+{
+    if(!init_objects.initialized || !init_objects.init_data) {
+        ZF_LOGE("Invalid usage of init library");
+        return seL4_CapNull;
+    }
 
+    EndpointData * iter = init_objects.init_data->ep_list_head;
+    ZF_LOGD_IF(iter == NULL, "No endpoints in list when looking up.");
+
+    while(iter) {
+        if(strcmp(name, iter->name) == 0) return (seL4_CPtr)iter->cap;
+        iter = iter->next;
+    }
+    ZF_LOGD("Unable to locate an ep with the given name");
+    return seL4_CapNull;
+}

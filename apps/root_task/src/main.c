@@ -117,15 +117,13 @@ int main(void) {
     err = process_give_untyped_resources(&child1, 1024 * 1024, 16);
     err = process_give_untyped_resources(&child2, 1024 * 1024, 16);
 
-    char *argv1[] = { "child1" }; 
-    char *argv2[] = { "child2" }; 
-    process_run(&child1, 1, argv1);
-    process_run(&child2, 1, argv2);
+    char *argv1[] = { "child1", "echo1-ep" }; 
+    char *argv2[] = { "child2", "echo1-ep" };
+    process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
+    process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
+
 
     seL4_DebugDumpScheduler();
-    seL4_Yield(); 
-    seL4_DebugDumpScheduler();
-
     return 0;
 }
 

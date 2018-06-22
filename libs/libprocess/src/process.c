@@ -183,11 +183,13 @@ int process_create(const char *elf_file_name,
         }
     }
 
+    handle->cnode_root_data = api_make_guard_skip_word(seL4_WordBits - handle->attrs.cnode_size_bits);
 
     /**
      * Setup the first thread in our new process
      */
     error = thread_handle_create_custom(handle->cnode.cptr,
+                                        handle->cnode_root_data,
                                         handle->fault_ep.cptr,
                                         handle->page_dir.cptr,
                                         &handle->vspace,
@@ -209,7 +211,10 @@ int process_create(const char *elf_file_name,
     
     dst.capPtr = INIT_CHILD_CNODE_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->cnode.cptr, &src);
-    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    error = vka_cnode_mint(&dst,
+                           &src,
+                           seL4_AllRights,
+                           handle->cnode_root_data);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");
         return error;
@@ -247,6 +252,7 @@ int process_create(const char *elf_file_name,
 #endif
     handle->name = proc_name;
     handle->init_data.proc_name = proc_name;
+    handle->ep_list_tail = NULL;
 
     return 0;
 }
@@ -280,6 +286,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      */
     seL4_Word raw_size = init_data__get_packed_size(&handle->init_data);
     seL4_Word init_data_len = ROUND_UP(raw_size + sizeof(seL4_Word), PAGE_SIZE_4K);
+    ZF_LOGV("Starting process with init data size: %lu", raw_size);
 
     reservation_t init_data_res = vspace_reserve_range_at(&handle->vspace,
                                                           INIT_CHILD_INIT_DATA_ADDR,
@@ -617,6 +624,41 @@ int process_add_device_irq(process_handle_t *handle,
 }
 
 
+/**
+ * This helper assumes you have grabbed all the locks
+ */
+static int copy_ep_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const char *conn_name) 
+{
+    /* TODO no pastarino? */
+    EndpointData *ep_data = malloc(sizeof(EndpointData));
+    if(ep_data == NULL) {
+        ZF_LOGE("Failed to allocate Endpoint Data");
+        return -1;
+    }
+
+    endpoint_data__init(ep_data);
+    ep_data->name = conn_name;
+    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap);
+    if(ep_data->cap == seL4_CapNull) {
+        ZF_LOGE("Failed to copy ep cap");
+        return -2;
+    }
+
+    if(handle->ep_list_tail == NULL) {
+        /* We are adding the first ep */
+        handle->init_data.ep_list_head = ep_data;
+        handle->ep_list_tail = ep_data;
+    } else {
+        /* Else add to tail */
+        handle->ep_list_tail->next = ep_data;
+        handle->ep_list_tail = ep_data;
+    }
+
+    return 0;
+
+}
+
+
 int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
                        process_handle_t *handle2, seL4_CapRights_t perms2,
                        const char *conn_name)
@@ -642,48 +684,17 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
         return -3;
     }
 
-    /* TODO no pastarino? */
-    EndpointData *ep_data = malloc(sizeof(EndpointData));
-    if(ep_data == NULL) {
-        ZF_LOGE("Failed to allocate Endpoint Data");
+    error = copy_ep_to_proc(handle1, ep.cptr, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process 1");
         return -4;
     }
-
-    endpoint_data__init(ep_data);
-    ep_data->cap = copy_cap_into_next_slot(handle1, ep.cptr);
-    ep_data->name = conn_name;
-
-    if(handle1->ep_list_tail == NULL) {
-        /* We are adding the first ep */
-        handle1->init_data.ep_list_head = ep_data;
-        handle1->ep_list_tail = ep_data;
-    } else {
-        /* Else add to tail */
-        handle1->ep_list_tail->next = ep_data;
-        handle1->ep_list_tail = ep_data;
+    
+    error = copy_ep_to_proc(handle2, ep.cptr, strdup(conn_name));
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process 2");
+        return -5;
     }
-
-    /* We don't need the old pointer anymore. Allocate the second data */
-    ep_data = malloc(sizeof(EndpointData));
-    if(ep_data == NULL) {
-        ZF_LOGE("Failed to allocate Endpoint Data");
-        return -4;
-    }
-
-    endpoint_data__init(ep_data);
-    ep_data->cap = copy_cap_into_next_slot(handle2, ep.cptr);
-    ep_data->name = conn_name;
-
-    if(handle2->ep_list_tail == NULL) {
-        /* We are adding the first ep */
-        handle2->init_data.ep_list_head = ep_data;
-        handle2->ep_list_tail = ep_data;
-    } else {
-        /* Else add to tail */
-        handle2->ep_list_tail->next = ep_data;
-        handle2->ep_list_tail = ep_data;
-    }
-
 
     return 0;
 }
