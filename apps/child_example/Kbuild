@@ -6,10 +6,10 @@
 
 apps-$(CONFIG_APP_CHILD_EXAMPLE) += child_example
 
-child_example-y = common libsel4 libmuslc libsel4muslcsys \
-                  libsel4vka libsel4allocman libutils \
+child_example-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
+                  libsel4vka libsel4allocman libsel4simple libutils \
                   libsel4utils libsel4debug libsel4vspace \
-                  libplatsupport libsel4platsupport \
+                  libplatsupport libsel4platsupport libcpio libelf \
                   libprocess libthread libsync libinit
 
 child_example: $(child_example-y)

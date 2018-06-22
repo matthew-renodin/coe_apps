@@ -45,7 +45,6 @@
 #include <init/init.h>
 
 
-#include "init_data.pb-c.h"
 
 
 /* Internal bookeeping variables for a process
@@ -133,7 +132,25 @@ static void print_cpio_data(void) {
 
 
 int init_process(void) {
-    /* TODO: In progress */
+    int error;
+    static int run_once = 0;
+
+    if(run_once) {
+        ZF_LOGF("This function may only be called once");
+    }
+    run_once = 1;
+
+    /**
+     * Unpack the init data from our parent process.
+     */
+    seL4_Word size = *((seL4_Word *)INIT_CHILD_INIT_DATA_ADDR);
+    InitData *init_data = init_data__unpack(NULL, 
+                                            size,
+                                            INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
+
+    printf("%s: Starting up!\n", init_data->proc_name);
+
+
     return 0;
 }
 
@@ -242,7 +259,7 @@ int init_root_task(void) {
 
 
     /* SIMPLE EXAMPLE OF PROTOBUF-C */
-
+/*
     InitData init = INIT_DATA__INIT;
 
     init.n_untyped_list = 10;
@@ -260,7 +277,7 @@ int init_root_task(void) {
     int size = init_data__pack(&init, buf);
 
     
-    printf("\nPacked size: %i\n", size);
+    printf("\nPacked size: %i\n", size);*/
 
     return 0;
 }

@@ -5,7 +5,9 @@
 ###############################################################################
 PROTOC := protoc-c
 
-PRIORITY_TARGETS := src/init_data.pb-c.h src/init_data.pb-c.c
+PROTOBUF_TARGETS := include/init/init_data.pb-c.h include/init/init_data.pb-c.c
+
+PRIORITY_TARGETS := $(PROTOBUF_TARGETS)
 TARGETS := libinit.a
 ###############################################################################
 # RULES
@@ -37,10 +39,10 @@ HDRFILES := $(sort $(HDRFILES))
 include $(SEL4_COMMON)/common.mk
 
 
-src/init_data.pb-c.h src/init_data.pb-c.c: $(SOURCE_DIR)/src/init_data.proto
+$(PROTOBUF_TARGETS): $(SOURCE_DIR)/include/init/init_data.proto
 	@echo " [PROTOBUF-C] $@"
-	mkdir -p ./src
-	$(PROTOC) --c_out=./src -I$(dir $<) $<
+	mkdir -p ./include/init
+	$(PROTOC) --c_out=./include/init -I$(dir $<) $<
 
 
 

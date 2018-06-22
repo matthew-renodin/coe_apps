@@ -31,3 +31,4 @@
 #include <init/types.h>
 #include <init/globals.h>
 #include <init/layouts.h>
+#include "init_data.pb-c.h"

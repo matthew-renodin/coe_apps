@@ -33,6 +33,8 @@
 #include <sel4utils/vspace.h>
 #include <sel4utils/elf.h>
 
+
+#include <init/init.h>
 #include <thread/thread.h>
 /**
  *
@@ -75,6 +77,10 @@ typedef struct process_handle {
     int cnode_next_free;
 
     thread_handle_t main_thread;
+
+    InitData init_data;
+    EndpointData *ep_list_tail;
+    
 
 } process_handle_t;
 

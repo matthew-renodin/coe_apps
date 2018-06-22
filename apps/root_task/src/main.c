@@ -81,31 +81,34 @@ int main(void) {
     ZF_LOGF_IF(err, "Failed to create child2");
 
 
+    err = process_connect_ep(&child1, seL4_AllRights,
+                             &child2, seL4_AllRights,
+                             "echo1-ep");   /* ep name */
+    ZF_LOGF_IF(err, "Failed to create ep");
 
-
-    err = process_connect_shmem(&child1, seL4_CanWrite,
-                                &child2, seL4_CanRead,
-                                1,                /* Number of pages */
-                                "echo1-shmem");   /* shmem name */
-    ZF_LOGF_IF(err, "Failed to create shared memory");
-
-    err = process_connect_notification(&child1, seL4_AllRights,
-                                       &child2, seL4_CanRead,
-                                       "echo1-notif");   /* ep name */
-    ZF_LOGF_IF(err, "Failed to create notification ep");
-
-
-
-    err = process_connect_shmem(&child1, seL4_CanRead,
-                                &child2, seL4_CanWrite,
-                                1,                /* Number of pages */
-                                "echo2-shmem");   /* shmem name */
-    ZF_LOGF_IF(err, "Failed to create shared memory");
-
-    err = process_connect_notification(&child1, seL4_CanRead,
-                                 &child2, seL4_CanWrite,
-                                 "echo2-notif");   /* ep name */
-    ZF_LOGF_IF(err, "Failed to create notification ep");
+//    err = process_connect_shmem(&child1, seL4_CanWrite,
+//                                &child2, seL4_CanRead,
+//                                1,                /* Number of pages */
+//                                "echo1-shmem");   /* shmem name */
+//    ZF_LOGF_IF(err, "Failed to create shared memory");
+//
+//    err = process_connect_notification(&child1, seL4_AllRights,
+//                                       &child2, seL4_CanRead,
+//                                       "echo1-notif");   /* ep name */
+//    ZF_LOGF_IF(err, "Failed to create notification ep");
+//
+//
+//
+//    err = process_connect_shmem(&child1, seL4_CanRead,
+//                                &child2, seL4_CanWrite,
+//                                1,                /* Number of pages */
+//                                "echo2-shmem");   /* shmem name */
+//    ZF_LOGF_IF(err, "Failed to create shared memory");
+//
+//    err = process_connect_notification(&child1, seL4_CanRead,
+//                                 &child2, seL4_CanWrite,
+//                                 "echo2-notif");   /* ep name */
+//    ZF_LOGF_IF(err, "Failed to create notification ep");
 
 
 

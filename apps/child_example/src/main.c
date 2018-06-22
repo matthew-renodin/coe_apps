@@ -54,7 +54,7 @@ char _cpio_archive[1]; /* TODO remove */
  * Demo entry point
  */
 int main(int argc, char **argv) {
-    //init_process();
+    init_process();
 
     //thread_handle_t worker;
     //thread_handle_create(256, seL4_MaxPrio, 0, &worker);
@@ -63,7 +63,6 @@ int main(int argc, char **argv) {
     //
     //seL4_Recv(999, NULL);
     printf("Made it into the child!\n");
-    while(1);
 
 
     /* TODO demo connection/ep communication */
