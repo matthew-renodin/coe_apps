@@ -154,7 +154,7 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
  * @return                  Error code
  */
 int process_give_untyped_resources(process_handle_t *handle, 
-                                   seL4_Word length_bytes, 
+                                   seL4_Word size_bits, 
                                    seL4_Word num_objects);
 
 

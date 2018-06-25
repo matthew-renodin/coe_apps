@@ -80,7 +80,6 @@ typedef struct process_handle {
     thread_handle_t main_thread;
 
     InitData init_data;
-    EndpointData *ep_list_tail;
     
 
 } process_handle_t;

@@ -71,7 +71,7 @@ int process_create(const char *elf_file_name,
         ZF_LOGE("Null process handle pointer passed to process_create.");
         return -2; /* TODO come up with error codes */
     }
-    handle->running = 0;
+    memset((void *)handle, 0, sizeof(handle));
 
 
     /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
@@ -250,9 +250,10 @@ int process_create(const char *elf_file_name,
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(handle->main_thread.tcb.cptr, proc_name);
 #endif
+    handle->running = 0;
     handle->name = proc_name;
     handle->init_data.proc_name = proc_name;
-    handle->ep_list_tail = NULL;
+    handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
 
     return 0;
 }
@@ -279,6 +280,8 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         ZF_LOGW("Process is already running.");
         return -3; /* TODO come up with error codes */
     }
+
+    handle->init_data.cnode_next_free = handle->cnode_next_free;
 
 
     /**
@@ -629,7 +632,6 @@ int process_add_device_irq(process_handle_t *handle,
  */
 static int copy_ep_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const char *conn_name) 
 {
-    /* TODO no pastarino? */
     EndpointData *ep_data = malloc(sizeof(EndpointData));
     if(ep_data == NULL) {
         ZF_LOGE("Failed to allocate Endpoint Data");
@@ -644,15 +646,8 @@ static int copy_ep_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const cha
         return -2;
     }
 
-    if(handle->ep_list_tail == NULL) {
-        /* We are adding the first ep */
-        handle->init_data.ep_list_head = ep_data;
-        handle->ep_list_tail = ep_data;
-    } else {
-        /* Else add to tail */
-        handle->ep_list_tail->next = ep_data;
-        handle->ep_list_tail = ep_data;
-    }
+    ep_data->next = handle->init_data.ep_list_head;
+    handle->init_data.ep_list_head = ep_data;
 
     return 0;
 
@@ -690,7 +685,7 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
         return -4;
     }
     
-    error = copy_ep_to_proc(handle2, ep.cptr, strdup(conn_name));
+    error = copy_ep_to_proc(handle2, ep.cptr, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy ep to process 2");
         return -5;
@@ -699,14 +694,124 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
     return 0;
 }
 
+/**
+ * This helper assumes you have grabbed all the locks
+ */
+static int copy_shmem_to_proc(process_handle_t *handle, void *vaddr, const char *conn_name) 
+{
+    SharedMemoryData *shmem_data = malloc(sizeof(SharedMemoryData));
+    if(shmem_data == NULL) {
+        ZF_LOGE("Failed to allocate Endpoint Data");
+        return -1;
+    }
+
+    shared_memory_data__init(shmem_data);
+    shmem_data->name = conn_name;
+    shmem_data->addr = (seL4_Word)vaddr;
+
+    /* Push the shmem data onto the list */
+    shmem_data->next = handle->init_data.shmem_list_head;
+    handle->init_data.shmem_list_head = shmem_data;
+
+    return 0;
+
+}
 
 int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1, 
                           process_handle_t *handle2, seL4_CapRights_t perms2,
                           seL4_Word num_pages,
                           const char *conn_name)
 {
-    /* TODO: Implement */
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle1 == NULL || handle2 == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_shmem.");
+        return -2; /* TODO come up with error codes */
+    }
+
+
+    void * vaddr1;
+    reservation_t res = vspace_reserve_range(&handle1->vspace,
+                                             num_pages * PAGE_SIZE_4K,
+                                             seL4_AllRights, /* TODO: this ok? */
+                                             1,
+                                             &vaddr1);
+    if(res.res == 0 || vaddr1 == NULL) {
+        ZF_LOGE("Failed to reserve space for the shared memory");
+        return -4;
+    }
+
+    error = vspace_new_pages_at_vaddr(&handle1->vspace,
+                                      vaddr1,
+                                      num_pages,
+                                      PAGE_BITS_4K,
+                                      res);
+    if(error) {
+        ZF_LOGE("Failed to allocate space for the init data");
+        return -5;
+    }
+    
+    void * vaddr2 = vspace_share_mem(&handle1->vspace,
+                                     &handle2->vspace,
+                                     vaddr1,
+                                     num_pages,
+                                     PAGE_BITS_4K,
+                                     seL4_AllRights,
+                                     1); /* should this be cacheable? */
+    if(vaddr2 == NULL) {
+       ZF_LOGE("Failed to share memory");
+       return -6;
+    }
+
+    error = copy_shmem_to_proc(handle1, vaddr1, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy shemem data to proc");
+        return -7;
+    }
+
+    error = copy_shmem_to_proc(handle2, vaddr2, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy shemem data to proc");
+        return -8;
+    }
+
     return 0;
+}
+
+
+
+/**
+ * This helper assumes you have grabbed all the locks
+ */
+static int copy_notification_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const char *conn_name) 
+{
+    EndpointData *ep_data = malloc(sizeof(EndpointData));
+    if(ep_data == NULL) {
+        ZF_LOGE("Failed to allocate Endpoint Data");
+        return -1;
+    }
+
+    endpoint_data__init(ep_data);
+    ep_data->name = conn_name;
+    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap);
+    if(ep_data->cap == seL4_CapNull) {
+        ZF_LOGE("Failed to copy ep cap");
+        return -2;
+    }
+
+    /* Push the endpoint onto the list */
+    ep_data->next = handle->init_data.notification_list_head;
+    handle->init_data.notification_list_head = ep_data;
+
+    return 0;
+
 }
 
 
@@ -714,17 +819,92 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
                                  process_handle_t *handle2, seL4_CapRights_t perms2,
                                  const char *conn_name)
 {
-    /* TODO: Implement */
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle1 == NULL || handle2 == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_notification.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    vka_object_t ep;
+    error = vka_alloc_notification(&init_objects.vka, &ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return -3;
+    }
+
+    error = copy_notification_to_proc(handle1, ep.cptr, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy notification to process 1");
+        return -4;
+    }
+    
+    error = copy_notification_to_proc(handle2, ep.cptr, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy notification to process 2");
+        return -5;
+    }
+
     return 0;
 }
 
 
 
 int process_give_untyped_resources(process_handle_t *handle,
-                                   seL4_Word length_bytes,
+                                   seL4_Word size_bits,
                                    seL4_Word num_objects)
 {
-    /* TODO: Implement */
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    for(seL4_Word i = 0; i < num_objects; i++) {
+    
+        vka_object_t ut;
+        error = vka_alloc_untyped(&init_objects.vka, size_bits, &ut);
+        if(error) {
+            ZF_LOGE("Failed to allocate ut object.");
+            return -3;
+        }
+    
+        UntypedData *ut_data = malloc(sizeof(UntypedData));
+        if(ut_data == NULL) {
+            ZF_LOGE("Failed to allocate Untyped Data");
+            return -4;
+        }
+    
+        untyped_data__init(ut_data);
+        ut_data->size = size_bits;
+        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr);
+        if(ut_data->cap == seL4_CapNull) {
+            ZF_LOGE("Failed to copy ut cap");
+            return -5;
+        }
+        
+        /* Push the ut data onto the list */
+        ut_data->next = handle->init_data.untyped_list_head;
+        handle->init_data.untyped_list_head = ut_data;
+
+    }
+    
+
     return 0;
 }
 

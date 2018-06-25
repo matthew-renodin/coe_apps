@@ -148,14 +148,69 @@ int init_process(void) {
     init_objects.init_data = init_data__unpack(NULL, 
                                                size,
                                                INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
-
-    printf("%s: Starting up!\n", init_objects.init_data->proc_name);
-
     
+#ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.init_data->proc_name);
+#endif
+
+    zf_log_set_tag_prefix(init_objects.init_data->proc_name);
+    ZF_LOGV("Starting up!\n");
+
+
+    /**
+     * Setup allocman and vka bookkeeping objects
+     * We are giving allocman a static array of memory to get started.
+     */
+    init_objects.allocman = bootstrap_use_current_1level(
+                                                  INIT_CHILD_CNODE_SLOT,
+                                                  init_objects.init_data->cnode_size_bits,
+                                                  init_objects.init_data->cnode_next_free,
+                                                  (1u << init_objects.init_data->cnode_size_bits),
+                                                  CONFIG_LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES,
+                                                  allocman_static_pool);
+    ZF_LOGF_IF(init_objects.allocman == NULL, "Failed to bootstrap allocman.");
+
+    allocman_make_vka(&init_objects.vka, init_objects.allocman);
+
+    /**
+     * Parse untypeds
+     */
+    seL4_Word total_ut_memory = 0;
+    seL4_Word total_ut_count = 0;
+    UntypedData *iter = init_objects.init_data->untyped_list_head;
+    while(iter != NULL) {
+        /**
+         * Give our untyped objects to allocman
+         */
+        cspacepath_t path;
+        vka_cspace_make_path(&init_objects.vka, iter->cap, &path);
+        ZF_LOGD("Adding a %lu bit untyped object", iter->size);
+
+        error = allocman_utspace_add_uts(init_objects.allocman,
+                                         1,
+                                         &path,
+                                         &iter->size,
+                                         (uintptr_t *)&iter->phys_addr, /* TODO optional! */
+                                         ALLOCMAN_UT_KERNEL);
+        ZF_LOGF_IF(error, "Failed to add untyped");
+        total_ut_memory += (1lu << iter->size);
+        total_ut_count++;
+
+        iter = iter->next;
+    }
+    ZF_LOGV("Added %lu untyped objects to allocman, totalling: %luK",
+            total_ut_count,
+            total_ut_memory / 1024);
+
+
+
 
     init_objects.initialized = 1;
     return 0;
 }
+
+
+
 
 
 int init_root_task(void) {

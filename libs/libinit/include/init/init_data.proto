@@ -8,6 +8,13 @@ message UntypedData {
   optional UntypedData next = 4;
 }
 
+message SharedMemoryData {
+  optional int64 cap = 1;
+  required int64 addr = 2;
+  required string name = 3;
+  optional SharedMemoryData next = 4;
+}
+
 message EndpointData {
   required int64 cap = 1;
   required string name = 2;
@@ -17,8 +24,12 @@ message EndpointData {
 message InitData {
   required string proc_name = 1;
   required int64 cnode_next_free = 2;
-  repeated int64 existing_frames = 3;
+  required int64 cnode_size_bits = 3;
 
-  optional UntypedData untyped_list_head = 4;
-  optional EndpointData ep_list_head = 5;
+  repeated int64 existing_frames = 4;
+
+  optional UntypedData untyped_list_head = 5;
+  optional EndpointData ep_list_head = 6;
+  optional EndpointData notification_list_head = 7;
+  optional SharedMemoryData shmem_list_head = 8;
 }
