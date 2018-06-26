@@ -159,7 +159,17 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 
 
-seL4_Word process_get_default_cnode_size(void);
+int process_map_pages_at(process_handle_t *handle,
+                         process_mapping_attr_t *attr,
+                         seL4_Word num_pages,
+                         void *vaddr);
+
+int process_map_pages(process_handle_t *handle,
+                      process_mapping_attr_t attr,
+                      seL4_Word num_pages,
+                      void **vaddr);
+
+
 
 
 /* ~~~ TODO: PHASE 2 API DESIGN ~~~ */

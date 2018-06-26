@@ -84,3 +84,10 @@ typedef struct process_handle {
 
 } process_handle_t;
 
+
+typedef struct process_mapping_attr {
+    unsigned int readable   : 1;
+    unsigned int writable   : 1;
+    unsigned int executable : 1;
+    unsigned int cacheable  : 1;
+} process_mapping_attr_t;

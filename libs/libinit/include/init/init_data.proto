@@ -21,6 +21,22 @@ message EndpointData {
   optional EndpointData next = 3;
 }
 
+message IrqData {
+  required string name = 1;
+  required int64 number = 2;
+  required int64 cap = 3;
+  optional IrqData next = 4;
+}
+
+message DeviceMemData {
+  required string name = 1;
+  required int64 virt_addr = 2;
+  required int64 size_pages = 3;
+  optional int64 phys_addr = 4;
+  optional DeviceMemData next = 5;
+}
+
+
 message InitData {
   required string proc_name = 1;
   required int64 cnode_next_free = 2;
@@ -32,4 +48,6 @@ message InitData {
   optional EndpointData ep_list_head = 6;
   optional EndpointData notification_list_head = 7;
   optional SharedMemoryData shmem_list_head = 8;
+  optional IrqData irq_list_head = 9;
+  optional DeviceMemData devmem_list_head = 10;
 }

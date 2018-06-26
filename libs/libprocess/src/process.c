@@ -613,7 +613,36 @@ int process_add_device_pages(process_handle_t *handle,
                              seL4_Word num_pages,
                              const char* device_name)
 {
-    /* TODO: Implement */
+    int error, i;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    ZF_LOGW_IF(!IS_ALIGNED_4K((seL4_Word)paddr),"Physical address of device not aligned to page boundaries.");
+
+    /* If we are the root task we can use simple/bootinfo */
+    if(init_objects.info != NULL) {
+        cspacepath_t path;
+        
+        for(i = 0; i < num_pages; i++) {
+            error = simple_get_frame_cap(&init_objects.simple, paddr, PAGE_BITS_4K, &path);
+
+        }
+        
+    } else {
+        /* In the other case we can check if any of our untyped objects have the phys addr */
+        ZF_LOGF("Not implemented");
+    }
+
     return 0;
 }
 
@@ -909,4 +938,71 @@ int process_give_untyped_resources(process_handle_t *handle,
 }
 
 
+int process_map_pages_at(process_handle_t *handle,
+                         process_mapping_attr_t *attr,
+                         seL4_Word num_pages,
+                         void *vaddr)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    seL4_CapRights_t rights = seL4_CapRights_new(0, attr->readable, attr->writable);
+
+    reservation_t res = vspace_reserve_range_at(&handle->vspace,
+                                                vaddr,
+                                                num_pages * PAGE_SIZE_4K,
+                                                rights, /* TODO Prune heap perms? */
+                                                attr->cacheable);
+    if(res.res == 0) {
+        ZF_LOGE("Failed to reserve space for the page mapping.");
+        return -3;
+    }
+    
+    error = vspace_new_pages_at_vaddr(&handle->vspace,
+                                      vaddr,
+                                      num_pages,
+                                      PAGE_BITS_4K,
+                                      res);
+    if(error) {
+        ZF_LOGE("Failed to map in the pages.");
+        return error;
+    }
+
+#ifdef CONFIG_ARCH_ARM
+    /* TODO: this is an in-progress piece of code -RTH (6/26/18) */
+    if(!attr->executable) {
+        seL4_Word vm_attrs = seL4_ARM_ParityEnabled | seL4_ARM_ExecuteNever;
+        vm_attrs |= (attr->cacheable) ? seL4_ARM_PageCacheable : 0;
+
+        for(seL4_Word i = (seL4_Word)vaddr; i < (seL4_Word)vaddr+num_pages*PAGE_SIZE_4K; i+=PAGE_SIZE_4K) {
+            seL4_CPtr cap = vspace_get_cap(&handle->vspace, i);
+            error = seL4_ARCH_Page_Remap(cap,
+                                         handle->page_dir.cptr,
+                                         rights,
+                                         vm_attrs);
+        }
+    }
+#endif
+    return 0;
+}
+
+
+int process_map_pages(process_handle_t *handle,
+                      process_mapping_attr_t attr,
+                      seL4_Word num_pages,
+                      void **vaddr)
+{
+    return 0;
+}
 

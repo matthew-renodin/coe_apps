@@ -123,7 +123,10 @@ int main(void) {
     process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
 
 
+    seL4_Yield();
+    seL4_Yield();
     seL4_DebugDumpScheduler();
+    seL4_DebugProcMap();
     return 0;
 }
 
