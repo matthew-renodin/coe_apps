@@ -587,7 +587,9 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
 /**
  * Assumes that handle is valid and that you have all the locks necessarry
  */
-static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle, seL4_CPtr new_cap)
+static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
+                                         seL4_CPtr new_cap,
+                                         seL4_CapRights_t perms)
 {
     int error;
 
@@ -597,7 +599,7 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle, seL4_CPtr new
     dst.capPtr = handle->cnode_next_free;
 
     vka_cspace_make_path(&init_objects.vka, new_cap, &src);
-    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    error = vka_cnode_copy(&dst, &src, perms);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");
         return seL4_CapNull;
@@ -611,6 +613,7 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle, seL4_CPtr new
 int process_add_device_pages(process_handle_t *handle, 
                              void *paddr,
                              seL4_Word num_pages,
+                             seL4_Word page_size_bits,
                              const char* device_name)
 {
     int error, i;
@@ -627,22 +630,67 @@ int process_add_device_pages(process_handle_t *handle,
         return -2; /* TODO come up with error codes */
     }
 
-    ZF_LOGW_IF(!IS_ALIGNED_4K((seL4_Word)paddr),"Physical address of device not aligned to page boundaries.");
+    ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_size_bits),
+               "Physical address of device not aligned to page boundaries.");
+
+
+    /**
+     * TODO:
+     * We some device pages are probably different sizes, we need to support this
+     */
+    void * vaddr;
+    reservation_t res = vspace_reserve_range_aligned(&handle->vspace,
+                                                     num_pages * (1 << page_size_bits),
+                                                     page_size_bits,
+                                                     seL4_AllRights, /* TODO: device perms? */
+                                                     0, /* Not cacheable */
+                                                     &vaddr);
+    if(res.res == 0 || vaddr == NULL) {
+        ZF_LOGE("Failed to reserve space for device");
+        return -3;
+    }
+
+    seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
+
 
     /* If we are the root task we can use simple/bootinfo */
     if(init_objects.info != NULL) {
-        cspacepath_t path;
         
         for(i = 0; i < num_pages; i++) {
-            error = simple_get_frame_cap(&init_objects.simple, paddr, PAGE_BITS_4K, &path);
+            cspacepath_t path;
+            error = simple_get_frame_cap(&init_objects.simple,
+                                         paddr + (i << page_size_bits),
+                                         page_size_bits,
+                                         &path);
+            if(error) {
+                ZF_LOGE("Unable to get physical frame for device");
+                free(caps);
+                return -4;
+            }
 
+            caps[i] = path.capPtr;
         }
-        
     } else {
         /* In the other case we can check if any of our untyped objects have the phys addr */
         ZF_LOGF("Not implemented");
     }
 
+
+    error = vspace_map_pages_at_vaddr(&handle->vspace,
+                                      caps,
+                                      NULL, /* cookie */
+                                      vaddr,
+                                      num_pages,
+                                      page_size_bits,
+                                      res);
+    if(error) {
+        ZF_LOGE("Failed to map in device pages");
+        free(caps);
+        return -5;
+    }
+
+
+    free(caps);
     return 0;
 }
 
@@ -659,7 +707,10 @@ int process_add_device_irq(process_handle_t *handle,
 /**
  * This helper assumes you have grabbed all the locks
  */
-static int copy_ep_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const char *conn_name) 
+static int copy_ep_to_proc(process_handle_t *handle,
+                           seL4_CPtr ep_cap,
+                           seL4_CapRights_t perms,
+                           const char *conn_name) 
 {
     EndpointData *ep_data = malloc(sizeof(EndpointData));
     if(ep_data == NULL) {
@@ -669,7 +720,7 @@ static int copy_ep_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const cha
 
     endpoint_data__init(ep_data);
     ep_data->name = conn_name;
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap);
+    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
     if(ep_data->cap == seL4_CapNull) {
         ZF_LOGE("Failed to copy ep cap");
         return -2;
@@ -708,13 +759,13 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
         return -3;
     }
 
-    error = copy_ep_to_proc(handle1, ep.cptr, conn_name);
+    error = copy_ep_to_proc(handle1, ep.cptr, perms1, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy ep to process 1");
         return -4;
     }
     
-    error = copy_ep_to_proc(handle2, ep.cptr, conn_name);
+    error = copy_ep_to_proc(handle2, ep.cptr, perms2, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy ep to process 2");
         return -5;
@@ -769,7 +820,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
     void * vaddr1;
     reservation_t res = vspace_reserve_range(&handle1->vspace,
                                              num_pages * PAGE_SIZE_4K,
-                                             seL4_AllRights, /* TODO: this ok? */
+                                             perms1, 
                                              1,
                                              &vaddr1);
     if(res.res == 0 || vaddr1 == NULL) {
@@ -792,7 +843,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
                                      vaddr1,
                                      num_pages,
                                      PAGE_BITS_4K,
-                                     seL4_AllRights,
+                                     perms2,
                                      1); /* should this be cacheable? */
     if(vaddr2 == NULL) {
        ZF_LOGE("Failed to share memory");
@@ -819,7 +870,10 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
 /**
  * This helper assumes you have grabbed all the locks
  */
-static int copy_notification_to_proc(process_handle_t *handle, seL4_CPtr ep_cap, const char *conn_name) 
+static int copy_notification_to_proc(process_handle_t *handle,
+                                     seL4_CPtr ep_cap,
+                                     seL4_CapRights_t perms,
+                                     const char *conn_name) 
 {
     EndpointData *ep_data = malloc(sizeof(EndpointData));
     if(ep_data == NULL) {
@@ -829,7 +883,7 @@ static int copy_notification_to_proc(process_handle_t *handle, seL4_CPtr ep_cap,
 
     endpoint_data__init(ep_data);
     ep_data->name = conn_name;
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap);
+    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
     if(ep_data->cap == seL4_CapNull) {
         ZF_LOGE("Failed to copy ep cap");
         return -2;
@@ -869,13 +923,13 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
         return -3;
     }
 
-    error = copy_notification_to_proc(handle1, ep.cptr, conn_name);
+    error = copy_notification_to_proc(handle1, ep.cptr, perms1, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy notification to process 1");
         return -4;
     }
     
-    error = copy_notification_to_proc(handle2, ep.cptr, conn_name);
+    error = copy_notification_to_proc(handle2, ep.cptr, perms2, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy notification to process 2");
         return -5;
@@ -921,7 +975,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     
         untyped_data__init(ut_data);
         ut_data->size = size_bits;
-        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr);
+        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr, seL4_AllRights); /* TODO:perms?*/
         if(ut_data->cap == seL4_CapNull) {
             ZF_LOGE("Failed to copy ut cap");
             return -5;
@@ -938,6 +992,14 @@ int process_give_untyped_resources(process_handle_t *handle,
 }
 
 
+
+
+    /*
+     *
+     * TODO: this is an in-progress piece of code -RTH (6/26/18)
+     *
+     *
+     */
 int process_map_pages_at(process_handle_t *handle,
                          process_mapping_attr_t *attr,
                          seL4_Word num_pages,
@@ -980,7 +1042,6 @@ int process_map_pages_at(process_handle_t *handle,
     }
 
 #ifdef CONFIG_ARCH_ARM
-    /* TODO: this is an in-progress piece of code -RTH (6/26/18) */
     if(!attr->executable) {
         seL4_Word vm_attrs = seL4_ARM_ParityEnabled | seL4_ARM_ExecuteNever;
         vm_attrs |= (attr->cacheable) ? seL4_ARM_PageCacheable : 0;

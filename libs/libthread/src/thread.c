@@ -95,11 +95,13 @@ int thread_handle_create_custom(seL4_CPtr cnode,
     if(error) {
         ZF_LOGW("Failed to set priority");
     }
-    
+   
+#ifdef ENABLE_SMP_SUPPORT 
     error = seL4_TCB_SetAffinity(handle->tcb.cptr, cpu_affinity);
     if(error) {
         ZF_LOGW("Failed to set affinity");
     }
+#endif
 
     return 0;
 

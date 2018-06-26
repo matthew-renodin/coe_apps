@@ -75,6 +75,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[]);
 int process_add_device_pages(process_handle_t *handle,
                              void *paddr,
                              seL4_Word num_pages,
+                             seL4_Word page_size_bits,
                              const char *device_name);
 
 /**

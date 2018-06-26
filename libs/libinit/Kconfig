@@ -24,7 +24,7 @@ config LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES
 
 config LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES
     int "Limit the size of the allocman's dynamically allocated bookkeeping data."
-    default 65536
+    default 524228
     depends on LIB_INIT
     help 
         This value sets the size of allocman's dynamically allocated space for bookkeeping.

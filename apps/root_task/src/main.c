@@ -63,8 +63,10 @@ UNUSED static void fancy_hello_world() {
 int main(void) {
     int err;
 
+    seL4_DebugProcMap();
     init_root_task();
 
+    seL4_DebugProcMap();
     process_handle_t child1, child2;
 
     err = process_create("child_example", /* File name */
@@ -86,7 +88,7 @@ int main(void) {
                              "echo1-ep");   /* ep name */
     ZF_LOGF_IF(err, "Failed to create ep");
 
-    err = process_connect_shmem(&child1, seL4_CanWrite,
+    err = process_connect_shmem(&child1, seL4_ReadWrite,
                                 &child2, seL4_CanRead,
                                 1,                /* Number of pages */
                                 "echo1-shmem");   /* shmem name */
@@ -100,13 +102,13 @@ int main(void) {
 
 
     err = process_connect_shmem(&child1, seL4_CanRead,
-                                &child2, seL4_CanWrite,
+                                &child2, seL4_ReadWrite,
                                 1,                /* Number of pages */
                                 "echo2-shmem");   /* shmem name */
     ZF_LOGF_IF(err, "Failed to create shared memory");
 
     err = process_connect_notification(&child1, seL4_CanRead,
-                                 &child2, seL4_CanWrite,
+                                 &child2, seL4_AllRights,
                                  "echo2-notif");   /* ep name */
     ZF_LOGF_IF(err, "Failed to create notification ep");
 

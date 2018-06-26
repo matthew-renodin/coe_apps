@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
         seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
     } else {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
-        printf("Got message %lu\n",seL4_MessageInfo_get_label(msg));
+        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
     }
         
 
