@@ -36,6 +36,7 @@
 /* Include seL4 Libraries */
 #include <sel4/sel4.h>
 #include <utils/util.h>
+#include <platsupport/plat/serial.h>
 
 /* Include seL4 COE library headers */
 #include <init/init.h>
@@ -63,10 +64,8 @@ UNUSED static void fancy_hello_world() {
 int main(void) {
     int err;
 
-    seL4_DebugProcMap();
     init_root_task();
 
-    seL4_DebugProcMap();
     process_handle_t child1, child2;
 
     err = process_create("child_example", /* File name */
@@ -118,6 +117,19 @@ int main(void) {
     /* Give each process 16 MB (2^20*16) of untyped kernel objects */
     err = process_give_untyped_resources(&child1, 20, 16);
     err = process_give_untyped_resources(&child2, 20, 16);
+
+#ifdef CONFIG_PLAT_ZYNQMP
+    err = process_map_device_pages_give_caps(&child1,
+                                             (void *)UART1_PADDR,
+                                             1, /* # of pages */
+                                             PAGE_BITS_4K,
+                                             "UART1-dma");
+    ZF_LOGF_IF(err, "Failed to map UART device");
+    
+    err = process_add_device_irq(&child1, UART1_IRQ, "UART1-irq");
+    ZF_LOGF_IF(err, "Failed to give IRQ device");
+#endif
+
 
     char *argv1[] = { "child1", "echo1-ep" }; 
     char *argv2[] = { "child2", "echo1-ep" };

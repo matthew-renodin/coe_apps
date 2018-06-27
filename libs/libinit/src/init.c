@@ -222,6 +222,7 @@ int init_root_task(void) {
     }
     run_once = 1;
 
+
     
     zf_log_set_tag_prefix("root_task:");
 
@@ -229,6 +230,7 @@ int init_root_task(void) {
     seL4_DebugNameThread(seL4_CapInitThreadTCB, "root_task");
 #endif
 
+    memset(&init_objects, 0, sizeof(init_objects));
 
     init_objects.info = platsupport_get_bootinfo();
     ZF_LOGF_IF(init_objects.info == NULL, "Failed to get bootinfo.");

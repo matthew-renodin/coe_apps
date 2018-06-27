@@ -72,11 +72,26 @@ int process_run(process_handle_t *handle, int argc, char *argv[]);
  * @param   device_name     Name of the device resource for lookups
  * @return                  Error code
  */
-int process_add_device_pages(process_handle_t *handle,
+int process_map_device_pages(process_handle_t *handle,
                              void *paddr,
                              seL4_Word num_pages,
-                             seL4_Word page_size_bits,
+                             seL4_Word page_bits,
                              const char *device_name);
+
+
+int process_map_device_pages_give_caps(process_handle_t *handle,
+                                       void *paddr,
+                                       seL4_Word num_pages,
+                                       seL4_Word page_bits,
+                                       const char *device_name);
+
+int process_map_my_device(process_handle_t *handle,
+                          const char *device_name,
+                          const char *new_device_name);
+
+int process_map_my_device_give_caps(process_handle_t *handle,
+                                    const char *device_name,
+                                    const char *new_device_name);
 
 /**
  * @brief Delegate a device interrupt to a given process.
@@ -89,6 +104,10 @@ int process_add_device_pages(process_handle_t *handle,
 int process_add_device_irq(process_handle_t *handle,
                            int irq_number, 
                            const char * device_name);
+
+int process_add_my_device_irq(process_handle_t *handle,
+                              const char * device_name, 
+                              const char * new_device_name);
 
 
 
@@ -174,6 +193,8 @@ int process_map_pages(process_handle_t *handle,
 
 
 /* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
+//int process_connect_ep_self
+
 /* Simple defaults */
 //int process_create_default(process_handle_t * handle);
 //int process_connect_ep_one_way(process_handle_t * handle1, process_handle_t *handle2);

@@ -252,7 +252,7 @@ int process_create(const char *elf_file_name,
 #endif
     handle->running = 0;
     handle->name = proc_name;
-    handle->init_data.proc_name = proc_name;
+    handle->init_data.proc_name = (char *)proc_name; /* protobuf uses non const strings */
     handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
 
     return 0;
@@ -342,7 +342,9 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
                           init_data_len / PAGE_SIZE_4K,
                           PAGE_BITS_4K,
                           &init_objects.vka);
-
+    /**
+     * TODO: free all the init data
+     */
     
     /**
      * Our child process expects the stack to look like this:
@@ -610,11 +612,13 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
 }
 
 
-int process_add_device_pages(process_handle_t *handle, 
-                             void *paddr,
-                             seL4_Word num_pages,
-                             seL4_Word page_size_bits,
-                             const char* device_name)
+
+static int process_map_device_pages_optional_caps(process_handle_t *handle, 
+                                                  void *paddr,
+                                                  seL4_Word num_pages,
+                                                  seL4_Word page_bits,
+                                                  const char* device_name,
+                                                  bool add_caps)
 {
     int error, i;
 
@@ -630,19 +634,15 @@ int process_add_device_pages(process_handle_t *handle,
         return -2; /* TODO come up with error codes */
     }
 
-    ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_size_bits),
+    ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_bits),
                "Physical address of device not aligned to page boundaries.");
 
 
-    /**
-     * TODO:
-     * We some device pages are probably different sizes, we need to support this
-     */
     void * vaddr;
     reservation_t res = vspace_reserve_range_aligned(&handle->vspace,
-                                                     num_pages * (1 << page_size_bits),
-                                                     page_size_bits,
-                                                     seL4_AllRights, /* TODO: device perms? */
+                                                     num_pages * (1 << page_bits),
+                                                     page_bits,
+                                                     seL4_ReadWrite,
                                                      0, /* Not cacheable */
                                                      &vaddr);
     if(res.res == 0 || vaddr == NULL) {
@@ -652,54 +652,202 @@ int process_add_device_pages(process_handle_t *handle,
 
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
 
-
-    /* If we are the root task we can use simple/bootinfo */
-    if(init_objects.info != NULL) {
-        
-        for(i = 0; i < num_pages; i++) {
-            cspacepath_t path;
-            error = simple_get_frame_cap(&init_objects.simple,
-                                         paddr + (i << page_size_bits),
-                                         page_size_bits,
-                                         &path);
-            if(error) {
-                ZF_LOGE("Unable to get physical frame for device");
-                free(caps);
-                return -4;
-            }
-
-            caps[i] = path.capPtr;
+    /* Manually allocate each page at the desired physical address */
+    for(i = 0; i < num_pages; i++) {
+        seL4_Word current_paddr = (seL4_Word)paddr + (i << page_bits);
+        vka_object_t page_obj;
+        error = vka_alloc_object_at_maybe_dev(&init_objects.vka,
+                                              kobject_get_type(KOBJECT_FRAME, page_bits),
+                                              page_bits,
+                                              current_paddr,
+                                              true, /* can use device uts */
+                                              &page_obj);
+        if(error) {
+    
+            ZF_LOGE("Failed to find physical frame to map");
+            free(caps);
+            return -4;
+    
         }
-    } else {
-        /* In the other case we can check if any of our untyped objects have the phys addr */
-        ZF_LOGF("Not implemented");
+        caps[i] = page_obj.cptr;                                         
     }
-
 
     error = vspace_map_pages_at_vaddr(&handle->vspace,
                                       caps,
                                       NULL, /* cookie */
                                       vaddr,
                                       num_pages,
-                                      page_size_bits,
+                                      page_bits,
                                       res);
     if(error) {
         ZF_LOGE("Failed to map in device pages");
         free(caps);
         return -5;
     }
+    
+    /**
+     * For ARM systems we can mark pages as non-executable here (temporary fix)
+     */
+#ifdef CONFIG_ARCH_ARM
+    for(i = 0; i < num_pages; i++) {
+        error = seL4_ARCH_Page_Remap(caps[i],
+                                     handle->page_dir.cptr,
+                                     seL4_ReadWrite,
+                                     seL4_ARM_ParityEnabled | seL4_ARM_ExecuteNever);
+        if(error) {
+            ZF_LOGE("Failed to set no-execute bit");
+            free(caps);
+            return -6;
+        }
+    }
+#endif
 
+    /**
+     * We need to copy each cap into the child's cnode (overwriting caps[])
+     */
+    if(add_caps) {
+        for(i = 0; i < num_pages; i++) {
+            caps[i] = copy_cap_into_next_slot(handle, caps[i], seL4_AllRights); 
+        }
+    }
 
-    free(caps);
+    /**
+     * Setup the init data
+     */
+    DeviceMemData *devmem_data = malloc(sizeof(DeviceMemData));
+    device_mem_data__init(devmem_data);
+
+    devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
+    devmem_data->virt_addr = (seL4_Word)vaddr;
+    devmem_data->phys_addr = (seL4_Word)paddr; 
+    devmem_data->size_bits = page_bits;
+    if(add_caps) {
+        devmem_data->caps = caps;
+        devmem_data->n_caps = num_pages;
+    }
+    /* Push onto init_data list */
+    devmem_data->next = handle->init_data.devmem_list_head;
+    handle->init_data.devmem_list_head = devmem_data;
+
     return 0;
 }
+
+int process_map_device_pages(process_handle_t *handle,
+                             void *paddr,
+                             seL4_Word num_pages,
+                             seL4_Word page_bits,
+                             const char *device_name)
+{
+    return process_map_device_pages_optional_caps(handle,
+                                                  paddr,
+                                                  num_pages,
+                                                  page_bits,
+                                                  device_name,
+                                                  false);
+}
+
+int process_map_device_pages_give_caps(process_handle_t *handle,
+                                       void *paddr,
+                                       seL4_Word num_pages,
+                                       seL4_Word page_bits,
+                                       const char *device_name)
+{
+    return process_map_device_pages_optional_caps(handle,
+                                                  paddr,
+                                                  num_pages,
+                                                  page_bits,
+                                                  device_name,
+                                                  true);
+}
+
 
 
 int process_add_device_irq(process_handle_t *handle,
                            int irq_number,
                            const char* device_name)
 {
-    /* TODO: Implement */
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    if(init_objects.info == NULL) {
+        ZF_LOGE("This function can only be used by the root task");
+        return -3;
+    }
+    
+    seL4_CPtr irq_cap;
+    cspacepath_t irq_path;
+    
+    /**
+     * Since our cap slots are managed by vka, we need a spot
+     * for simple to put our new irq cap.
+     */
+    error = vka_cspace_alloc(&init_objects.vka, &irq_cap);
+    if(error) {
+        ZF_LOGE("Failed to find a slot for the irq cap");
+        return -4;
+    }
+    vka_cspace_make_path(&init_objects.vka, irq_cap, &irq_path);
+
+    /**
+     * Get the irq cap using simple. This uses the bootinfo's seL4_CapIRQControl
+     * cap to generate it.
+     */
+    error = simple_get_IRQ_handler(&init_objects.simple, irq_number, irq_path);
+    if(error) {
+        ZF_LOGE("Failed to get an IRQ handler cap from the IRQControl cap");
+        return -5;
+    }
+
+    /**
+     * Allocate a notification object.
+     */
+    vka_object_t irq_notification;
+    error = vka_alloc_notification(&init_objects.vka, &irq_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate a notification object");
+        return -6;
+    }
+    /**
+     * bind the notification to our irq cap
+     */
+    error = seL4_IRQHandler_SetNotification(irq_cap, irq_notification.cptr);
+    if(error) {
+        ZF_LOGE("Failed to bind our irq to the notification");
+        return -7;
+    }
+
+    /**
+     * Enable IRQ and Ack any outstanding intterupts
+     */
+    seL4_IRQHandler_Ack(irq_cap);
+
+    /**
+     * Setup init data. Copy caps to child process
+     */
+    IrqData *irq_data = malloc(sizeof(IrqData));
+    irq_data__init(irq_data);
+
+    irq_data->name = (char *)device_name; /* protobuf uses non const strings */
+    irq_data->irq_cap = copy_cap_into_next_slot(handle, irq_cap, seL4_AllRights);
+    irq_data->ep_cap = copy_cap_into_next_slot(handle, irq_notification.cptr, seL4_AllRights);
+    irq_data->number = irq_number;
+    /* Push onto irq list */
+    irq_data->next = handle->init_data.irq_list_head;
+    handle->init_data.irq_list_head = irq_data;
+
+
+
     return 0;
 }
 
@@ -719,7 +867,7 @@ static int copy_ep_to_proc(process_handle_t *handle,
     }
 
     endpoint_data__init(ep_data);
-    ep_data->name = conn_name;
+    ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
     ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
     if(ep_data->cap == seL4_CapNull) {
         ZF_LOGE("Failed to copy ep cap");
@@ -786,7 +934,7 @@ static int copy_shmem_to_proc(process_handle_t *handle, void *vaddr, const char 
     }
 
     shared_memory_data__init(shmem_data);
-    shmem_data->name = conn_name;
+    shmem_data->name = (char *)conn_name; /* protobuf uses non const strings */
     shmem_data->addr = (seL4_Word)vaddr;
 
     /* Push the shmem data onto the list */
@@ -882,7 +1030,7 @@ static int copy_notification_to_proc(process_handle_t *handle,
     }
 
     endpoint_data__init(ep_data);
-    ep_data->name = conn_name;
+    ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
     ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
     if(ep_data->cap == seL4_CapNull) {
         ZF_LOGE("Failed to copy ep cap");
