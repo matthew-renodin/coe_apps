@@ -281,6 +281,8 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return -3; /* TODO come up with error codes */
     }
 
+    /* TODO: copy existing frames list */
+
     handle->init_data.cnode_next_free = handle->cnode_next_free;
 
 

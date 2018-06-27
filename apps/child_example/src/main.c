@@ -42,13 +42,13 @@
 char _cpio_archive[1]; /* TODO remove */
 
 
-//void * worker_thread(void *cookie) {
-//    printf("Worker thread %lu: Made it!\n", thread_get_id());
-//
-//    
-//
-//    return NULL;
-//}
+void * worker_thread(void *cookie) {
+    printf("Worker thread %lu: Made it!\n", thread_get_id());
+
+    while(1); 
+
+    return NULL;
+}
 
 
 /**
@@ -69,13 +69,12 @@ int main(int argc, char **argv) {
     }
         
 
-    //thread_handle_t worker;
-    //thread_handle_create(256, seL4_MaxPrio, 0, &worker);
+    thread_handle_t worker;
+    thread_handle_create(256, seL4_MaxPrio, 0, &worker);
 
-    //thread_start(&worker, worker_thread, NULL);
+    thread_start(&worker, worker_thread, NULL);
 
 
-    /* TODO demo connection/ep communication */
 
     return 0;
 }

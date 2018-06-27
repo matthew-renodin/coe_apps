@@ -16,10 +16,56 @@ int thread_handle_create(seL4_Word stack_size_pages,
                          seL4_Word cpu_affinity,
                          thread_handle_t *handle)
 {
+    int error;
+
+    /* TODO: implement sync */
+    if(!init_objects.initialized) {
+        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to setup.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Null thread handle passed into thread_handle_create");
+        return -2;
+    }
+
+    error = thread_handle_create_custom(init_objects.cnode_cap,
+                                        0,
+                                        init_objects.fault_cap,
+                                        init_objects.page_dir_cap,
+                                        &init_objects.vspace,
+                                        stack_size_pages,
+                                        priority,
+                                        cpu_affinity,
+                                        handle);
     return 0;
 }
 
 int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void *arg) {
+    int error;
+    seL4_UserContext regs = {0};
+
+    if(handle == NULL) {
+        ZF_LOGE("Null thread handle passed into thread_start");
+        return -1;
+    }
+
+    sel4utils_set_instruction_pointer(&regs, (seL4_Word)start_routine);
+    //stack_vaddr//stack_size_pages
+    //
+    uintptr_t initial_stack_pointer = (uintptr_t)handle->stack_vaddr - sizeof(seL4_Word);
+
+    initial_stack_pointer = ALIGN_DOWN(initial_stack_pointer, STACK_CALL_ALIGNMENT);
+
+    sel4utils_set_stack_pointer(&regs, initial_stack_pointer);
+
+    error = seL4_TCB_WriteRegisters(handle->tcb.cptr, 1, 0, sizeof(regs)/sizeof(seL4_Word), &regs);
+    if(error) {
+        ZF_LOGE("Failed to write tcb registers");
+        return -2;
+    }
+
     return 0;
 }
 

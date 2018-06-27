@@ -31,9 +31,12 @@ typedef struct init_objects {
     seL4_BootInfo *info;
 
     /* We can abstract away from boot info here */
+    seL4_CPtr cnode_cap;
+    seL4_CPtr page_dir_cap;
+    seL4_CPtr tcb_cap;
+    seL4_CPtr fault_cap;
     seL4_CPtr asid_pool_cap;
     seL4_CPtr asid_control_cap;
-    seL4_CPtr tcb_cap;
 
     InitData *init_data;
 

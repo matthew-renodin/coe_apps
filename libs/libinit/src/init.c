@@ -141,6 +141,8 @@ int init_process(void) {
     }
     run_once = 1;
 
+    memset(&init_objects, 0, sizeof(init_objects));
+
     /**
      * Unpack the init data from our parent process.
      */
@@ -203,7 +205,13 @@ int init_process(void) {
             total_ut_memory / 1024);
 
 
+    /* TODO: setup vspace */
 
+
+    init_objects.cnode_cap = INIT_CHILD_CNODE_SLOT;
+    init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
+    init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
+    init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
 
     init_objects.initialized = 1;
     return 0;
@@ -222,8 +230,6 @@ int init_root_task(void) {
     }
     run_once = 1;
 
-
-    
     zf_log_set_tag_prefix("root_task:");
 
 #ifdef CONFIG_DEBUG_BUILD
@@ -312,32 +318,13 @@ int init_root_task(void) {
     init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
     init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
     init_objects.tcb_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadTCB);
-
+    init_objects.cnode_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadCNode);
+    init_objects.page_dir_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+    init_objects.fault_cap = seL4_CapNull;
 
     init_objects.initialized = 1;
 
 
-
-    /* SIMPLE EXAMPLE OF PROTOBUF-C */
-/*
-    InitData init = INIT_DATA__INIT;
-
-    init.n_untyped_list = 10;
-    init.untyped_list = malloc(10 * sizeof(Untyped *));
-    for(int i = 0; i < 10; i++) {
-        init.untyped_list[i] = malloc(sizeof(Untyped));
-        untyped__init(init.untyped_list[i]);
-        init.untyped_list[i]->phys_addr = i;
-        init.untyped_list[i]->size = i;
-        init.untyped_list[i]->phys_addr = i;
-    }
-    init.proc_name = "Charlie";
-
-    void *buf = malloc(init_data__get_packed_size(&init));
-    int size = init_data__pack(&init, buf);
-
-    
-    printf("\nPacked size: %i\n", size);*/
 
     return 0;
 }
