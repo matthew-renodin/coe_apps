@@ -41,10 +41,22 @@
 
 char _cpio_archive[1]; /* TODO remove */
 
+UNUSED char *my_name;
+UNUSED char *ep_name;
 
 void * worker_thread(void *cookie) {
-    printf("Worker thread %lu: Made it!\n", thread_get_id());
+    printf("Looking up ep: %s\n", ep_name);
+    seL4_CPtr ep_cap = init_lookup_ep(ep_name);
+    printf("Found cap in slot: %d\n", (int)ep_cap);
 
+    if(strcmp(my_name, "child1")) {
+        seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
+    } else {
+        seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
+        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
+        seL4_DebugDumpScheduler();
+    }
+       
     while(1); 
 
     return NULL;
@@ -55,26 +67,22 @@ void * worker_thread(void *cookie) {
  * Demo entry point
  */
 int main(int argc, char **argv) {
-    init_process();
+    int error;
 
-    printf("Looking up ep: %s\n", argv[1]);
-    seL4_CPtr ep_cap = init_lookup_ep(argv[1]);
-    printf("Found cap in slot: %d\n", (int)ep_cap);
+    error = init_process();
+    ZF_LOGF_IF(error, "Failed to init child process");
 
-    if(strcmp(argv[0], "child1")) {
-        seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
-    } else {
-        seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
-        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
-    }
-        
+    my_name = argv[0];
+    ep_name = argv[1];
 
     thread_handle_t worker;
-    thread_handle_create(256, seL4_MaxPrio, 0, &worker);
+    error = thread_handle_create(256, seL4_MaxPrio, 0, &worker);
+    ZF_LOGF_IF(error, "Failed to create thread.");
 
-    thread_start(&worker, worker_thread, NULL);
+    error = thread_start(&worker, worker_thread, NULL);
+    ZF_LOGF_IF(error, "Failed to start thread");
 
-
+    while(1);
 
     return 0;
 }

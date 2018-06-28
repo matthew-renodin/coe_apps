@@ -134,6 +134,7 @@ static void print_cpio_data(void) {
 
 int init_process(void) {
     int error;
+    int i,j;
     static int run_once = 0;
 
     if(run_once) {
@@ -151,12 +152,17 @@ int init_process(void) {
                                                size,
                                                INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
     
+    init_objects.cnode_cap = INIT_CHILD_CNODE_SLOT;
+    init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
+    init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
+    init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
+
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.init_data->proc_name);
 #endif
 
     zf_log_set_tag_prefix(init_objects.init_data->proc_name);
-    ZF_LOGV("Starting up!\n");
+    ZF_LOGD("Starting up process: %s.", init_objects.init_data->proc_name);
 
 
     /**
@@ -186,7 +192,6 @@ int init_process(void) {
          */
         cspacepath_t path;
         vka_cspace_make_path(&init_objects.vka, iter->cap, &path);
-        ZF_LOGD("Adding a %lu bit untyped object", iter->size);
 
         error = allocman_utspace_add_uts(init_objects.allocman,
                                          1,
@@ -205,13 +210,103 @@ int init_process(void) {
             total_ut_memory / 1024);
 
 
-    /* TODO: setup vspace */
+    /**
+     * Setup an existing frames list.
+     */
+    seL4_Word num_frames = init_objects.init_data->heap_size_pages +
+                           init_objects.init_data->stack_size_pages +
+                           1; /* IPC buffer */
+
+    SharedMemoryData *shmem_iter = init_objects.init_data->shmem_list_head;
+    DeviceMemoryData *devmem_iter = init_objects.init_data->devmem_list_head;
+    
+    /* Count num frames */
+    while(shmem_iter != NULL) {
+        num_frames++;
+        shmem_iter = shmem_iter->next;
+    } 
+    while(devmem_iter != NULL) {
+        num_frames++;
+        devmem_iter = devmem_iter->next;
+    }
+    shmem_iter = init_objects.init_data->shmem_list_head;
+    devmem_iter = init_objects.init_data->devmem_list_head;
+
+    /* Allocate an extra space for the null terminator */
+    void **existing_frames = calloc((num_frames + 1), sizeof(void *));
+    if(existing_frames == NULL) {
+        ZF_LOGE("Failed to get memory for existing frames buffer");
+        return -1;
+    }
+
+    j = 0;
+    for(i = 0; i < init_objects.init_data->heap_size_pages; i++, j++) {
+        existing_frames[j] = INIT_CHILD_HEAP_ADDR + (i << PAGE_BITS_4K);
+    }
+    for(i = 0; i < init_objects.init_data->stack_size_pages; i++, j++) {
+        /**
+         * This stack_vaddr points to the top of the stack so we have to subtract.
+         * I am unsure if this works in the edge cases. TODO test.
+         */
+        existing_frames[j] = init_objects.init_data->stack_vaddr - (i << PAGE_BITS_4K);
+    }
+
+    while(shmem_iter != NULL) {
+        ZF_LOGW_IF(shmem_iter->length_bytes%PAGE_SIZE_4K != 0, "Invalid length of shmem");
+
+        for(i = 0; i < (shmem_iter->length_bytes/PAGE_SIZE_4K); i++, j++) {
+            existing_frames[j] = shmem_iter->addr + (i << PAGE_BITS_4K);
+        }
+        shmem_iter = shmem_iter->next;
+    } 
+    while(devmem_iter != NULL) {
+        for(i = 0; i < devmem_iter->num_pages; i++, j++) {
+            existing_frames[j] = devmem_iter->virt_addr + (i << devmem_iter->size_bits);
+        }
+        devmem_iter = devmem_iter->next;
+    }
+    existing_frames[j++] = seL4_GetIPCBuffer();
+
+    ZF_LOGW_IF(j != num_frames, "Not all of the existing frames were copied.");
+
+    /**
+     * Setup vspace object
+     */
+    error = sel4utils_bootstrap_vspace(&init_objects.vspace,
+                                       &vspace_bootstrap_data,
+                                       init_objects.page_dir_cap,
+                                       &init_objects.vka,
+                                       NULL,
+                                       NULL,
+                                       (void**)existing_frames);
+    if(error) {
+        ZF_LOGE("Failed to setup vspace object");
+        return 2;
+    }
 
 
-    init_objects.cnode_cap = INIT_CHILD_CNODE_SLOT;
-    init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
-    init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
-    init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
+    if(init_objects.init_data->untyped_list_head != NULL) {
+        /* At this point all the objects are initialized, but we want to give 
+         * allocman more memory for bookkeeping, so we will reserve some memory for it.
+         * It will do the actual allocation.
+         */
+    
+        reservation_t reservation;
+    
+        /* Reserve a new big space for using vspace. */
+        reservation = vspace_reserve_range(&init_objects.vspace,
+                                           CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
+                                           seL4_AllRights,
+                                           1, /* Cacheable */
+                                           &allocman_dynamic_pool);
+        ZF_LOGF_IF(reservation.res == NULL, "Failed to reserve a chunk of memory range");
+        
+        /* Use the newly reserved space as bookkeeping space for allocman. */
+        bootstrap_configure_virtual_pool(init_objects.allocman, 
+                                         allocman_dynamic_pool,
+                                         CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
+                                         init_objects.page_dir_cap);
+    }
 
     init_objects.initialized = 1;
     return 0;

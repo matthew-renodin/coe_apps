@@ -254,6 +254,9 @@ int process_create(const char *elf_file_name,
     handle->name = proc_name;
     handle->init_data.proc_name = (char *)proc_name; /* protobuf uses non const strings */
     handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
+    handle->init_data.heap_size_pages = handle->attrs.heap_size_pages;
+    handle->init_data.stack_size_pages = handle->attrs.stack_size_pages; 
+    handle->init_data.stack_vaddr = handle->main_thread.stack_vaddr;
 
     return 0;
 }
@@ -281,7 +284,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return -3; /* TODO come up with error codes */
     }
 
-    /* TODO: copy existing frames list */
+
 
     handle->init_data.cnode_next_free = handle->cnode_next_free;
 
@@ -716,13 +719,14 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
     /**
      * Setup the init data
      */
-    DeviceMemData *devmem_data = malloc(sizeof(DeviceMemData));
-    device_mem_data__init(devmem_data);
+    DeviceMemoryData *devmem_data = malloc(sizeof(DeviceMemoryData));
+    device_memory_data__init(devmem_data);
 
     devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
     devmem_data->virt_addr = (seL4_Word)vaddr;
     devmem_data->phys_addr = (seL4_Word)paddr; 
     devmem_data->size_bits = page_bits;
+    devmem_data->num_pages = num_pages;
     if(add_caps) {
         devmem_data->caps = caps;
         devmem_data->n_caps = num_pages;
@@ -927,7 +931,10 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
 /**
  * This helper assumes you have grabbed all the locks
  */
-static int copy_shmem_to_proc(process_handle_t *handle, void *vaddr, const char *conn_name) 
+static int copy_shmem_to_proc(process_handle_t *handle,
+                              void *vaddr,
+                              seL4_Word num_pages,
+                              const char *conn_name) 
 {
     SharedMemoryData *shmem_data = malloc(sizeof(SharedMemoryData));
     if(shmem_data == NULL) {
@@ -938,6 +945,7 @@ static int copy_shmem_to_proc(process_handle_t *handle, void *vaddr, const char 
     shared_memory_data__init(shmem_data);
     shmem_data->name = (char *)conn_name; /* protobuf uses non const strings */
     shmem_data->addr = (seL4_Word)vaddr;
+    shmem_data->length_bytes = num_pages * PAGE_SIZE_4K;
 
     /* Push the shmem data onto the list */
     shmem_data->next = handle->init_data.shmem_list_head;
@@ -1000,13 +1008,13 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
        return -6;
     }
 
-    error = copy_shmem_to_proc(handle1, vaddr1, conn_name);
+    error = copy_shmem_to_proc(handle1, vaddr1, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
         return -7;
     }
 
-    error = copy_shmem_to_proc(handle2, vaddr2, conn_name);
+    error = copy_shmem_to_proc(handle2, vaddr2, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
         return -8;

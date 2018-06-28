@@ -80,7 +80,7 @@ typedef struct process_handle {
     thread_handle_t main_thread;
 
     InitData init_data;
-    
+
 
 } process_handle_t;
 
