@@ -45,6 +45,9 @@ UNUSED char *my_name;
 UNUSED char *ep_name;
 
 void * worker_thread(void *cookie) {
+
+    printf("Cookie %p: %p\n", &cookie, cookie);
+    
     printf("Looking up ep: %s\n", ep_name);
     seL4_CPtr ep_cap = init_lookup_ep(ep_name);
     printf("Found cap in slot: %d\n", (int)ep_cap);
@@ -56,6 +59,7 @@ void * worker_thread(void *cookie) {
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
         seL4_DebugDumpScheduler();
     }
+
        
     while(1); 
 
@@ -79,7 +83,7 @@ int main(int argc, char **argv) {
     error = thread_handle_create(256, seL4_MaxPrio, 0, &worker);
     ZF_LOGF_IF(error, "Failed to create thread.");
 
-    error = thread_start(&worker, worker_thread, NULL);
+    error = thread_start(&worker, worker_thread, (void*)0xdeadbeef);
     ZF_LOGF_IF(error, "Failed to start thread");
 
     while(1);

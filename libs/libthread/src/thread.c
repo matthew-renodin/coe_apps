@@ -2,11 +2,15 @@
  * @file thread.c
  * @brief Core implementation of libthread
  */
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 
 #include <sel4/sel4.h>
 #include <vka/vka.h>
 #include <vspace/vspace.h>
 #include <utils/util.h>
+#include <sel4utils/helpers.h>
 
 #include <thread/thread.h>
 #include <init/init.h>
@@ -17,7 +21,6 @@ int thread_handle_create(seL4_Word stack_size_pages,
                          thread_handle_t *handle)
 {
     int error;
-
     /* TODO: implement sync */
     if(!init_objects.initialized) {
         ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
@@ -39,6 +42,19 @@ int thread_handle_create(seL4_Word stack_size_pages,
                                         priority,
                                         cpu_affinity,
                                         handle);
+    if(error) {
+        ZF_LOGE("Failed to create thread handle");
+        return -3;
+    }
+
+#ifdef CONFIG_DEBUG_BUILD
+    static int counter = 0;
+    char *new_name;
+    asprintf(&new_name, "%s-%i", init_objects.init_data->proc_name, ++counter);
+    seL4_DebugNameThread(handle->tcb.cptr, new_name);
+    free(new_name);
+#endif 
+
     return 0;
 }
 
@@ -51,19 +67,50 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
         return -1;
     }
 
-    sel4utils_set_instruction_pointer(&regs, (seL4_Word)start_routine);
-    //stack_vaddr//stack_size_pages
-    //
+    /**
+     * ARM requires 8-byte alignment
+     */
     uintptr_t initial_stack_pointer = (uintptr_t)handle->stack_vaddr - sizeof(seL4_Word);
 
-    initial_stack_pointer = ALIGN_DOWN(initial_stack_pointer, STACK_CALL_ALIGNMENT);
+    uintptr_t unaligned_future_stack_pointer = initial_stack_pointer - sizeof(void *);
+    uintptr_t aligned_future_stack_pointer = ALIGN_DOWN(unaligned_future_stack_pointer, STACK_CALL_ALIGNMENT);
+    ptrdiff_t offset =  unaligned_future_stack_pointer - aligned_future_stack_pointer;
+    initial_stack_pointer -= offset;
 
-    sel4utils_set_stack_pointer(&regs, initial_stack_pointer);
+    initial_stack_pointer -= sizeof(void *);
+
+#ifdef CONFIG_ARCH_AARCH64
+    regs.x0 = (seL4_Word)arg;
+#endif
+#ifdef CONFIG_ARCH_AARCH32
+    regs.r0 = (seL4_Word)arg;
+#endif
+
+/**
+ * TODO: TEST x86!
+ */
+#ifdef CONFIG_ARCH_X86_64
+    regs.rdi = (seL4_Word)arg;
+    initial_stack_pointer -= sizeof(uintptr_t);
+#endif
+#ifdef CONFIG_ARCH_IA32
+    void **dest = (void**)(initial_stack_pointer);
+    *dest = arg;
+
+#endif
+
+    error = sel4utils_arch_init_context(start_routine,
+                                        (void*)initial_stack_pointer,
+                                        &regs);
+    if(error) {
+        ZF_LOGE("Failed to initialize thread registers");
+        return -2;
+    }
 
     error = seL4_TCB_WriteRegisters(handle->tcb.cptr, 1, 0, sizeof(regs)/sizeof(seL4_Word), &regs);
     if(error) {
         ZF_LOGE("Failed to write tcb registers");
-        return -2;
+        return -3;
     }
 
     return 0;
