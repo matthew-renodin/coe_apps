@@ -15,7 +15,7 @@ menuconfig LIB_INIT
     
 config LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES
     int "Number of bytes to statically allocate for allocman to bootstrap"
-    default 32768
+    default 65536
     depends on LIB_INIT
     help 
         This value sets the size of a static array to give to liballocman for it
@@ -28,3 +28,11 @@ config LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES
     depends on LIB_INIT
     help 
         This value sets the size of allocman's dynamically allocated space for bookkeeping.
+
+
+config LIB_INIT_ROOT_TASK_HEAP_SPACE
+    int "Root task heap space"
+    default 4194304
+    depends on LIB_INIT
+    help
+       The root task needs to know how much space to use for its heap.

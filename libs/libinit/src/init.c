@@ -47,7 +47,6 @@
 
 
 
-
 /* Internal bookeeping variables for a process
  * These object operate at various layers 
  * with upper layers depending on lower layers:
@@ -84,6 +83,15 @@ init_objects_t init_objects;
 
 UNUSED static serial_objects_t serial_objects;
 
+/**
+ * Global variables from libsel4muslcsys
+ * that allow us to define where malloc pulls memory from.
+ */
+extern vspace_t *muslc_this_vspace;
+extern reservation_t muslc_brk_reservation;
+extern void *muslc_brk_reservation_start;
+extern char *morecore_area;
+extern size_t morecore_size;
 
 
 
@@ -97,6 +105,9 @@ static void *  allocman_dynamic_pool;
 
 /* Static memory to help bootstrap the virtual memory bookkeeping */
 static sel4utils_alloc_data_t vspace_bootstrap_data;
+
+/* Reservation for our heap */
+static sel4utils_res_t heap_res;
 
 static void print_coe_banner(void) {
     printf("\n"
@@ -141,16 +152,28 @@ int init_process(void) {
         ZF_LOGF("This function may only be called once");
     }
     run_once = 1;
+    
+    /**
+     * Information about the init_data and heap are passed as environment variables
+     */
+    morecore_area = (void*)strtol(getenv("HEAP_ADDR"), NULL, 16);
+    morecore_size = atoi(getenv("HEAP_SIZE"));
+
+    void *init_data_packed = (void*)strtol(getenv("INIT_DATA_ADDR"), NULL, 16);
+    seL4_Word init_data_packed_size = atoi(getenv("INIT_DATA_SIZE"));
+
+    ZF_LOGD("env: HEAP_ADDR=%p", morecore_area);
+    ZF_LOGD("env: HEAP_SIZE=%lu", morecore_size);
+    ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
+    ZF_LOGD("env: INIT_DATA_SIZE=%lu", init_data_packed_size);
 
     memset(&init_objects, 0, sizeof(init_objects));
-
     /**
      * Unpack the init data from our parent process.
      */
-    seL4_Word size = *((seL4_Word *)INIT_CHILD_INIT_DATA_ADDR);
     init_objects.init_data = init_data__unpack(NULL, 
-                                               size,
-                                               INIT_CHILD_INIT_DATA_ADDR + sizeof(seL4_Word));
+                                               init_data_packed_size,
+                                               init_data_packed);
     
     init_objects.cnode_cap = INIT_CHILD_CNODE_SLOT;
     init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
@@ -213,8 +236,10 @@ int init_process(void) {
     /**
      * Setup an existing frames list.
      */
-    seL4_Word num_frames = init_objects.init_data->heap_size_pages +
-                           init_objects.init_data->stack_size_pages +
+    seL4_Word init_data_pages = ROUND_UP(init_data_packed_size, PAGE_SIZE_4K);
+    seL4_Word num_frames = init_objects.init_data->stack_size_pages +
+                           init_data_pages +
+                           (morecore_size / PAGE_SIZE_4K) + /* TODO assuming 4k alignment */
                            1; /* IPC buffer */
 
     SharedMemoryData *shmem_iter = init_objects.init_data->shmem_list_head;
@@ -239,9 +264,15 @@ int init_process(void) {
         return -1;
     }
 
+    /**
+     * Initialize the existing_frames array
+     */
     j = 0;
-    for(i = 0; i < init_objects.init_data->heap_size_pages; i++, j++) {
-        existing_frames[j] = INIT_CHILD_HEAP_ADDR + (i << PAGE_BITS_4K);
+    for(i = 0; i < init_data_pages; i++, j++) {
+        existing_frames[j] = (void*)(init_data_packed + (i << PAGE_BITS_4K));
+    }
+    for(i = 0; i < morecore_size / PAGE_SIZE_4K; i++, j++) {
+        existing_frames[j] = (void*)(morecore_area + (i << PAGE_BITS_4K));
     }
     for(i = 0; i < init_objects.init_data->stack_size_pages; i++, j++) {
         /**
@@ -281,10 +312,13 @@ int init_process(void) {
                                        (void**)existing_frames);
     if(error) {
         ZF_LOGE("Failed to setup vspace object");
-        return 2;
+        return -2;
     }
 
 
+    /**
+     * If we have untypeds we can reserve space for bookkeeping.
+     */
     if(init_objects.init_data->untyped_list_head != NULL) {
         /* At this point all the objects are initialized, but we want to give 
          * allocman more memory for bookkeeping, so we will reserve some memory for it.
@@ -339,8 +373,7 @@ int init_root_task(void) {
     /* Initialize the simple structure's function pointers,
      * Simple manages our bootinfo struct for us. */
     simple_default_init_bootinfo(&init_objects.simple, init_objects.info);
-
-
+    
     /* Setup allocman with a static pool to bootstrap its bookkeeping.
      * Since we are providing it our simple struct it will fill itself
      * with untyped memory chunks from the bootinfo.
@@ -359,11 +392,31 @@ int init_root_task(void) {
      * We don't want vspace to free objects so we use the "leaky" call.
      */
     error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&init_objects.vspace, 
-                                                           &vspace_bootstrap_data,
-                                                           simple_get_pd(&init_objects.simple),
-                                                           &init_objects.vka,
-                                                           init_objects.info);
+                                                            &vspace_bootstrap_data,
+                                                            simple_get_pd(&init_objects.simple),
+                                                            &init_objects.vka,
+                                                            init_objects.info);
     ZF_LOGF_IF(error, "Failed to bootstrap vspace");
+
+    /**
+     * Setup malloc to refill from our new allocators.
+     * Malloc won't work before this point so we have to use reserve_range_no_alloc
+     */
+    error = sel4utils_reserve_range_no_alloc(&init_objects.vspace,
+                                             &heap_res,
+                                             CONFIG_LIB_INIT_ROOT_TASK_HEAP_SPACE,
+                                             seL4_ReadWrite,
+                                             1, /* Cacheable */
+                                             &muslc_brk_reservation_start);
+    if(error) {
+        ZF_LOGE("Failed to reserve range for heap");
+        return -3;
+    }
+    muslc_brk_reservation.res = &heap_res;
+    muslc_this_vspace = &init_objects.vspace;
+
+
+    /* Malloc is available now */
 
 
     /* At this point all the objects are initialized, but we want to give 

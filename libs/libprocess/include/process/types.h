@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 
 #include <sel4/sel4.h>
 #include <vka/vka.h>
@@ -47,6 +48,8 @@ typedef struct process_attr {
     seL4_Word cpu_affinity;
 
     seL4_Word cnode_size_bits;
+
+    seL4_Word bookeeping_memory_size;
 } process_attr_t;
 
 
@@ -66,6 +69,8 @@ typedef struct process_handle {
     uintptr_t sysinfo;
 
     process_attr_t attrs;
+
+    void* heap_vaddr;
 
     vka_object_t cnode;
     vka_object_t fault_ep;

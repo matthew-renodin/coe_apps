@@ -18,11 +18,3 @@
 
 
 
-
-
-/**
- * Child process memory layout. TODO: this is 100% arbitrary and not ideal, fix
- * We can maybe use the env struct passed into main
- */
-#define INIT_CHILD_HEAP_ADDR            ((void *)0x70000000)
-#define INIT_CHILD_INIT_DATA_ADDR       ((void *)0x60000000)

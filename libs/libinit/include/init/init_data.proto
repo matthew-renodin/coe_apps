@@ -44,14 +44,13 @@ message InitData {
   required string proc_name = 1;
   required uint64 cnode_next_free = 2;
   required uint64 cnode_size_bits = 3;
-  required uint64 heap_size_pages = 4;
-  required uint64 stack_size_pages = 5;
-  required uint64 stack_vaddr = 6;
+  required uint64 stack_size_pages = 6;
+  required uint64 stack_vaddr = 7;
 
-  optional UntypedData untyped_list_head = 7;
-  optional EndpointData ep_list_head = 8;
-  optional EndpointData notification_list_head = 9;
-  optional SharedMemoryData shmem_list_head = 10;
-  optional IrqData irq_list_head = 11;
-  optional DeviceMemoryData devmem_list_head = 12;
+  optional UntypedData untyped_list_head = 8;
+  optional EndpointData ep_list_head = 9;
+  optional EndpointData notification_list_head = 10;
+  optional SharedMemoryData shmem_list_head = 11;
+  optional IrqData irq_list_head = 12;
+  optional DeviceMemoryData devmem_list_head = 13;
 }

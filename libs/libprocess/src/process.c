@@ -161,26 +161,24 @@ int process_create(const char *elf_file_name,
     /**
      * Allocate a heap and map it into the process's page directory.
      */
-    if(handle->attrs.heap_size_pages > 0) {
-        reservation_t res = vspace_reserve_range_at(&handle->vspace,
-                                                    INIT_CHILD_HEAP_ADDR,
-                                                    handle->attrs.heap_size_pages * PAGE_SIZE_4K,
-                                                    seL4_AllRights, /* TODO Prune heap perms? */
-                                                    1);
-        if(res.res == 0) {
-            ZF_LOGE("Failed to reserve space for the heap.");
-            return -5;
-        }
-    
-        error = vspace_new_pages_at_vaddr(&handle->vspace,
-                                          INIT_CHILD_HEAP_ADDR,
-                                          handle->attrs.heap_size_pages,
-                                          PAGE_BITS_4K,
-                                          res);
-        if(error) {
-            ZF_LOGE("Failed to map in the heap.");
-            return error;
-        }
+    reservation_t res = vspace_reserve_range(&handle->vspace,
+                                             handle->attrs.heap_size_pages * PAGE_SIZE_4K,
+                                             seL4_ReadWrite,
+                                             1,
+                                             &handle->heap_vaddr);
+    if(res.res == 0) {
+        ZF_LOGE("Failed to reserve space for the heap.");
+        return -5;
+    }
+
+    error = vspace_new_pages_at_vaddr(&handle->vspace,
+                                      handle->heap_vaddr,
+                                      handle->attrs.heap_size_pages,
+                                      PAGE_BITS_4K,
+                                      res);
+    if(error) {
+        ZF_LOGE("Failed to map in the heap.");
+        return error;
     }
 
     handle->cnode_root_data = api_make_guard_skip_word(seL4_WordBits - handle->attrs.cnode_size_bits);
@@ -254,7 +252,6 @@ int process_create(const char *elf_file_name,
     handle->name = proc_name;
     handle->init_data.proc_name = (char *)proc_name; /* protobuf uses non const strings */
     handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
-    handle->init_data.heap_size_pages = handle->attrs.heap_size_pages;
     handle->init_data.stack_size_pages = handle->attrs.stack_size_pages; 
     handle->init_data.stack_vaddr = handle->main_thread.stack_vaddr;
 
@@ -293,21 +290,22 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      * Copy the init data into the child memory space
      */
     seL4_Word raw_size = init_data__get_packed_size(&handle->init_data);
-    seL4_Word init_data_len = ROUND_UP(raw_size + sizeof(seL4_Word), PAGE_SIZE_4K);
+    seL4_Word init_data_len = ROUND_UP(raw_size, PAGE_SIZE_4K);
     ZF_LOGV("Starting process with init data size: %lu", raw_size);
 
-    reservation_t init_data_res = vspace_reserve_range_at(&handle->vspace,
-                                                          INIT_CHILD_INIT_DATA_ADDR,
-                                                          init_data_len,
-                                                          seL4_AllRights, /* TODO: this ok? */
-                                                          1);
+    void *init_data_vaddr;
+    reservation_t init_data_res = vspace_reserve_range(&handle->vspace,
+                                                       init_data_len,
+                                                       seL4_AllRights, /* TODO: this ok? */
+                                                       1,
+                                                       &init_data_vaddr);
     if(init_data_res.res == 0) {
         ZF_LOGE("Failed to reserve space for the init data");
         return -4;
     }
 
     error = vspace_new_pages_at_vaddr(&handle->vspace,
-                                      INIT_CHILD_INIT_DATA_ADDR,
+                                      init_data_vaddr,
                                       init_data_len / PAGE_SIZE_4K,
                                       PAGE_BITS_4K,
                                       init_data_res);
@@ -319,7 +317,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     
     void * packed_init_data = vspace_share_mem(&handle->vspace,
                                                &init_objects.vspace,
-                                               INIT_CHILD_INIT_DATA_ADDR,
+                                               init_data_vaddr,
                                                init_data_len / PAGE_SIZE_4K,
                                                PAGE_BITS_4K,
                                                seL4_AllRights,
@@ -330,14 +328,9 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     }
 
     /**
-     * We first write then length
-     */
-    *((seL4_Word*)packed_init_data) = raw_size;
-
-    /**
      * Then write the packed data
      */
-    init_data__pack(&handle->init_data, packed_init_data + sizeof(seL4_Word));
+    init_data__pack(&handle->init_data, packed_init_data);
 
     /**
      * We don't need the data in our address space anymore, unmap
@@ -363,21 +356,45 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      * +------------------+
      * | aux *            |
      * +------------------+
-     *  TODO: figure out what this strings are used for if they are used at all.
+     *  
+     * We need to pass a few environment variables to the child to
+     * help it find/unpack its init data.
      */
-    int envc = 1;
-    AUTOFREE char *ipc_buf_env = NULL;
-    error = asprintf(&ipc_buf_env, "IPCBUFFER=0x%"PRIxPTR"", handle->main_thread.ipc_buffer_vaddr);
+    AUTOFREE char *heap_addr_env;
+    error = asprintf(&heap_addr_env,
+                     "HEAP_ADDR=0x%"PRIxPTR"",
+                     handle->heap_vaddr);
     if (error == -1) {
         return -1;
     }
-    AUTOFREE char *tcb_cptr_buf_env = NULL;
-    error = asprintf(&tcb_cptr_buf_env, "boot_tcb_cptr=0x%"PRIxPTR"", handle->main_thread.tcb.cptr);
-    if (error == -1) {
-        return -1;
-    }
-    char *envp[] = {ipc_buf_env, tcb_cptr_buf_env};
 
+    AUTOFREE char *heap_size_env;
+    error = asprintf(&heap_size_env,
+                     "HEAP_SIZE=%lu",
+                     (long unsigned)handle->attrs.heap_size_pages * PAGE_SIZE_4K);
+    if (error == -1) {
+        return -1;
+    }
+
+    AUTOFREE char *init_data_addr_env;
+    error = asprintf(&init_data_addr_env,
+                     "INIT_DATA_ADDR=0x%"PRIxPTR"",
+                     init_data_vaddr);
+    if (error == -1) {
+        return -1;
+    }
+
+    AUTOFREE char *init_data_size_env;
+    error = asprintf(&init_data_size_env,
+                     "INIT_DATA_SIZE=%lu",
+                     (long unsigned)raw_size);
+    if (error == -1) {
+        return -1;
+    }
+
+
+    char *envp[] = {heap_addr_env, heap_size_env, init_data_addr_env, init_data_size_env};
+    int envc = sizeof(envp)/sizeof(envp[0]);
 
     uintptr_t initial_stack_pointer = (uintptr_t)handle->main_thread.stack_vaddr - sizeof(seL4_Word); 
     /**
