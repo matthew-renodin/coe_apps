@@ -19,74 +19,15 @@
  * @TAG(IAI_BSD)
  */
 /**
- * @file types.h
- * @brief Exported type definitions for libprocess
+ * @file thread.h
+ * @brief Top-level include for libmmap.
  *
  */
 
 #pragma once
 
-#include <stdbool.h>
 
-#include <sel4/sel4.h>
-#include <vka/vka.h>
-#include <vspace/vspace.h>
-#include <sel4utils/vspace.h>
-#include <sel4utils/elf.h>
-
-
-#include <init/init.h>
-#include <thread/thread.h>
-/**
- *
- */
-typedef struct process_attr {
-    seL4_Word heap_size_pages;
-    seL4_Word stack_size_pages;
-
-    seL4_Word priority;
-    seL4_Word cpu_affinity;
-
-    seL4_Word cnode_size_bits;
-
-    seL4_Word bookeeping_memory_size;
-} process_attr_t;
-
-
-/**
- * @brief Userspace bookeeping for a child process resources.
- */
-typedef struct process_handle {
-    /* Only one thread can modify this structure at once */
-    //int lock;
-    int running;
-
-    const char *name;
-
-    void* entry_point;
-    int num_elf_phdrs;
-    Elf_Phdr *elf_phdrs;
-    uintptr_t sysinfo;
-
-    process_attr_t attrs;
-
-    void* heap_vaddr;
-
-    vka_object_t cnode;
-    vka_object_t fault_ep;
-    vka_object_t page_dir;
-
-    vspace_t vspace;
-    sel4utils_alloc_data_t vspace_data;
-
-    seL4_Word cnode_root_data;
-    int cnode_next_free;
-
-    thread_handle_t main_thread;
-
-    InitData init_data;
-
-
-} process_handle_t;
+#include <mmap/prototypes.h>
+#include <mmap/types.h>
 
 

@@ -58,6 +58,7 @@ void * worker_thread(void *cookie) {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
         seL4_DebugDumpScheduler();
+        seL4_DebugProcMap();
     }
 
        

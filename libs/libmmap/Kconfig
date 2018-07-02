@@ -1,0 +1,14 @@
+###############################################################################
+# libmmap - Kconfig
+#
+#
+###############################################################################
+
+config LIB_MMAP
+    bool "libmmap"
+    depends on HAVE_LIB_SEL4 && HAVE_LIBC && HAVE_LIB_SEL4_VKA && HAVE_LIB_SEL4_ALLOCMAN
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        A library to abstract away memory mapping details of the libsel4vspace and libsel4utils libraries.
+
