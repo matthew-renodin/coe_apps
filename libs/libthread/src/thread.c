@@ -13,6 +13,7 @@
 #include <sel4utils/helpers.h>
 
 #include <thread/thread.h>
+#include <mmap/mmap.h>
 #include <init/init.h>
 
 int thread_handle_create(seL4_Word stack_size_pages,
@@ -153,8 +154,11 @@ int thread_handle_create_custom(seL4_CPtr cnode,
      * Allocate the stack somewhere (reserves an extra guard page)
      */
     handle->stack_size_pages = stack_size_pages;
-    handle->stack_vaddr = vspace_new_sized_stack(vspace, stack_size_pages);
-    if(handle->stack_vaddr == NULL) {
+    error = mmap_new_stack_custom(vspace,
+                                  page_dir,
+                                  stack_size_pages,
+                                  &handle->stack_vaddr);
+    if(error) {
         ZF_LOGW("Failed to allocate stack");
         return -3;
     }
@@ -162,8 +166,13 @@ int thread_handle_create_custom(seL4_CPtr cnode,
     /**
      * Allocate an IPC buffer
      */
-    handle->ipc_buffer_vaddr = vspace_new_ipc_buffer(vspace, &handle->ipc_buffer_cap);
-    if(handle->ipc_buffer_vaddr == NULL) {
+    error = mmap_new_pages_custom(vspace,
+                                  page_dir,
+                                  1,
+                                  &mmap_attr_4k_data,
+                                  &handle->ipc_buffer_cap,
+                                  &handle->ipc_buffer_vaddr);
+    if(error) {
         ZF_LOGW("Failed to allocate ipc buffer");
         return -4;
     }

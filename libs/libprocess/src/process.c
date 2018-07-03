@@ -40,6 +40,7 @@
 #include <sel4utils/helpers.h>
 
 #include <init/init.h>
+#include <mmap/mmap.h>
 #include <process/process.h>
 
 
@@ -161,21 +162,12 @@ int process_create(const char *elf_file_name,
     /**
      * Allocate a heap and map it into the process's page directory.
      */
-    reservation_t res = vspace_reserve_range(&handle->vspace,
-                                             handle->attrs.heap_size_pages * PAGE_SIZE_4K,
-                                             seL4_ReadWrite,
-                                             1,
-                                             &handle->heap_vaddr);
-    if(res.res == 0) {
-        ZF_LOGE("Failed to reserve space for the heap.");
-        return -5;
-    }
-
-    error = vspace_new_pages_at_vaddr(&handle->vspace,
-                                      handle->heap_vaddr,
-                                      handle->attrs.heap_size_pages,
-                                      PAGE_BITS_4K,
-                                      res);
+    error = mmap_new_pages_custom(&handle->vspace,
+                                  handle->page_dir.cptr,
+                                  handle->attrs.heap_size_pages,
+                                  &mmap_attr_4k_data,
+                                  NULL,
+                                  &handle->heap_vaddr);
     if(error) {
         ZF_LOGE("Failed to map in the heap.");
         return error;
@@ -294,21 +286,12 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     ZF_LOGV("Starting process with init data size: %lu", raw_size);
 
     void *init_data_vaddr;
-    reservation_t init_data_res = vspace_reserve_range(&handle->vspace,
-                                                       init_data_len,
-                                                       seL4_AllRights, /* TODO: this ok? */
-                                                       1,
-                                                       &init_data_vaddr);
-    if(init_data_res.res == 0) {
-        ZF_LOGE("Failed to reserve space for the init data");
-        return -4;
-    }
-
-    error = vspace_new_pages_at_vaddr(&handle->vspace,
-                                      init_data_vaddr,
-                                      init_data_len / PAGE_SIZE_4K,
-                                      PAGE_BITS_4K,
-                                      init_data_res);
+    error = mmap_new_pages_custom(&handle->vspace,
+                                  handle->page_dir.cptr,
+                                  init_data_len / PAGE_SIZE_4K,
+                                  &mmap_attr_4k_data,
+                                  NULL,
+                                  &init_data_vaddr);
     if(error) {
         ZF_LOGE("Failed to allocate space for the init data");
         return -5;
@@ -660,69 +643,29 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
                "Physical address of device not aligned to page boundaries.");
 
 
-    void * vaddr;
-    reservation_t res = vspace_reserve_range_aligned(&handle->vspace,
-                                                     num_pages * (1 << page_bits),
-                                                     page_bits,
-                                                     seL4_ReadWrite,
-                                                     0, /* Not cacheable */
-                                                     &vaddr);
-    if(res.res == 0 || vaddr == NULL) {
-        ZF_LOGE("Failed to reserve space for device");
-        return -3;
-    }
 
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
-
-    /* Manually allocate each page at the desired physical address */
-    for(i = 0; i < num_pages; i++) {
-        seL4_Word current_paddr = (seL4_Word)paddr + (i << page_bits);
-        vka_object_t page_obj;
-        error = vka_alloc_object_at_maybe_dev(&init_objects.vka,
-                                              kobject_get_type(KOBJECT_FRAME, page_bits),
-                                              page_bits,
-                                              current_paddr,
-                                              true, /* can use device uts */
-                                              &page_obj);
-        if(error) {
-    
-            ZF_LOGE("Failed to find physical frame to map");
-            free(caps);
-            return -4;
-    
-        }
-        caps[i] = page_obj.cptr;                                         
+    if(caps == NULL) {
+        ZF_LOGE("Failed to malloc an array to hold page caps");
+        return -4;
     }
 
-    error = vspace_map_pages_at_vaddr(&handle->vspace,
-                                      caps,
-                                      NULL, /* cookie */
-                                      vaddr,
-                                      num_pages,
-                                      page_bits,
-                                      res);
+    mmap_entry_attr_t attrs = mmap_attr_4k_device;
+    attrs.page_size_bits = page_bits;
+
+    void * vaddr;
+
+    error = mmap_new_device_pages_custom(&handle->vspace,
+                                         handle->page_dir.cptr,
+                                         paddr,
+                                         num_pages,
+                                         &attrs,
+                                         caps,
+                                         &vaddr);
     if(error) {
-        ZF_LOGE("Failed to map in device pages");
-        free(caps);
+        ZF_LOGE("Failed to map device");
         return -5;
     }
-    
-    /**
-     * For ARM systems we can mark pages as non-executable here (temporary fix)
-     */
-#ifdef CONFIG_ARCH_ARM
-    for(i = 0; i < num_pages; i++) {
-        error = seL4_ARCH_Page_Remap(caps[i],
-                                     handle->page_dir.cptr,
-                                     seL4_ReadWrite,
-                                     seL4_ARM_ParityEnabled | seL4_ARM_ExecuteNever);
-        if(error) {
-            ZF_LOGE("Failed to set no-execute bit");
-            free(caps);
-            return -6;
-        }
-    }
-#endif
 
     /**
      * We need to copy each cap into the child's cnode (overwriting caps[])
@@ -991,50 +934,79 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
         return -2; /* TODO come up with error codes */
     }
 
+    mmap_entry_attr_t attrs = mmap_attr_4k_data;
+    attrs.readable = seL4_CapRights_get_capAllowRead(perms1);
+    attrs.writable = seL4_CapRights_get_capAllowWrite(perms1);
 
-    void * vaddr1;
-    reservation_t res = vspace_reserve_range(&handle1->vspace,
-                                             num_pages * PAGE_SIZE_4K,
-                                             perms1, 
-                                             1,
-                                             &vaddr1);
-    if(res.res == 0 || vaddr1 == NULL) {
-        ZF_LOGE("Failed to reserve space for the shared memory");
+    void *vaddr1, *vaddr2;
+
+    seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
+    if(caps == NULL) {
+        ZF_LOGE("Failed to malloc temporary space for page caps");
+        return -3;
+    }
+
+    /**
+     * First map the pages into handle1
+     */
+    error = mmap_new_pages_custom(&handle1->vspace,
+                                  handle1->page_dir.cptr,
+                                  num_pages,
+                                  &attrs,
+                                  caps,
+                                  &vaddr1);
+    if(error) {
+        ZF_LOGE("Failed to map new pages into child");
+        free(caps);
         return -4;
     }
 
-    error = vspace_new_pages_at_vaddr(&handle1->vspace,
-                                      vaddr1,
-                                      num_pages,
-                                      PAGE_BITS_4K,
-                                      res);
+    /**
+     * We need to copy the caps to double map them.
+     */
+    for(int i = 0; i < num_pages; i++) {
+        cspacepath_t path1, path2;
+        vka_cspace_make_path(&init_objects.vka, caps[i], &path1);
+        vka_cspace_alloc_path(&init_objects.vka, &path2);
+        error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
+        if(error) {
+            ZF_LOGE("Failed to copy cap for shared page.");
+            free(caps);
+            return -5;
+        }
+        caps[i] = path2.capPtr;
+    }
+
+    /**
+     * Now we share map the pages into handle2
+     */
+    attrs.readable = seL4_CapRights_get_capAllowRead(perms2);
+    attrs.writable = seL4_CapRights_get_capAllowWrite(perms2);
+
+    error = mmap_existing_pages_custom(&handle2->vspace,
+                                       handle2->page_dir.cptr,
+                                       num_pages,
+                                       &attrs,
+                                       caps,
+                                       &vaddr2);
     if(error) {
-        ZF_LOGE("Failed to allocate space for the init data");
+        ZF_LOGE("Failed to share pages to second process");
+        free(caps);
         return -5;
     }
-    
-    void * vaddr2 = vspace_share_mem(&handle1->vspace,
-                                     &handle2->vspace,
-                                     vaddr1,
-                                     num_pages,
-                                     PAGE_BITS_4K,
-                                     perms2,
-                                     1); /* should this be cacheable? */
-    if(vaddr2 == NULL) {
-       ZF_LOGE("Failed to share memory");
-       return -6;
-    }
+
+    free(caps);
 
     error = copy_shmem_to_proc(handle1, vaddr1, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
-        return -7;
+        return -6;
     }
 
     error = copy_shmem_to_proc(handle2, vaddr2, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
-        return -8;
+        return -7;
     }
 
     return 0;
@@ -1167,78 +1139,4 @@ int process_give_untyped_resources(process_handle_t *handle,
 }
 
 
-
-
-    /*
-     *
-     * TODO: this is an in-progress piece of code -RTH (6/26/18)
-     *
-     *
-     */
-int process_map_pages_at(process_handle_t *handle,
-                         process_mapping_attr_t *attr,
-                         seL4_Word num_pages,
-                         void *vaddr)
-{
-    int error;
-
-    /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
-        return -2; /* TODO come up with error codes */
-    }
-
-    seL4_CapRights_t rights = seL4_CapRights_new(0, attr->readable, attr->writable);
-
-    reservation_t res = vspace_reserve_range_at(&handle->vspace,
-                                                vaddr,
-                                                num_pages * PAGE_SIZE_4K,
-                                                rights, /* TODO Prune heap perms? */
-                                                attr->cacheable);
-    if(res.res == 0) {
-        ZF_LOGE("Failed to reserve space for the page mapping.");
-        return -3;
-    }
-    
-    error = vspace_new_pages_at_vaddr(&handle->vspace,
-                                      vaddr,
-                                      num_pages,
-                                      PAGE_BITS_4K,
-                                      res);
-    if(error) {
-        ZF_LOGE("Failed to map in the pages.");
-        return error;
-    }
-
-#ifdef CONFIG_ARCH_ARM
-    if(!attr->executable) {
-        seL4_Word vm_attrs = seL4_ARM_ParityEnabled | seL4_ARM_ExecuteNever;
-        vm_attrs |= (attr->cacheable) ? seL4_ARM_PageCacheable : 0;
-
-        for(seL4_Word i = (seL4_Word)vaddr; i < (seL4_Word)vaddr+num_pages*PAGE_SIZE_4K; i+=PAGE_SIZE_4K) {
-            seL4_CPtr cap = vspace_get_cap(&handle->vspace, i);
-            error = seL4_ARCH_Page_Remap(cap,
-                                         handle->page_dir.cptr,
-                                         rights,
-                                         vm_attrs);
-        }
-    }
-#endif
-    return 0;
-}
-
-
-int process_map_pages(process_handle_t *handle,
-                      process_mapping_attr_t attr,
-                      seL4_Word num_pages,
-                      void **vaddr)
-{
-    return 0;
-}
 

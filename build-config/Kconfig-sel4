@@ -50,6 +50,7 @@ menu "seL4 Libraries"
     source "libs/libthread/Kconfig"
     source "libs/libsync/Kconfig"
     source "libs/libinit/Kconfig"
+    source "libs/libmmap/Kconfig"
 endmenu
 
 menu "Tools"

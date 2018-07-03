@@ -29,5 +29,6 @@
 
 #include <mmap/prototypes.h>
 #include <mmap/types.h>
+#include <mmap/globals.h>
 
 
