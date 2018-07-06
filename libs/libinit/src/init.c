@@ -186,8 +186,8 @@ int init_process(void) {
     seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.proc_name);
 #endif
 
-    zf_log_set_tag_prefix(init_objects.init_data->proc_name);
-    ZF_LOGD("Starting up process: %s.", init_objects.init_data->proc_name);
+    zf_log_set_tag_prefix(init_objects.proc_name);
+    ZF_LOGD("Starting up process: %s.", init_objects.proc_name);
 
 
     /**
@@ -363,12 +363,12 @@ int init_root_task(void) {
 
     zf_log_set_tag_prefix("root_task:");
 
+    memset(&init_objects, 0, sizeof(init_objects));
+
     init_objects.proc_name = "root_task";
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(seL4_CapInitThreadTCB, init_objects.proc_name);
 #endif
-
-    memset(&init_objects, 0, sizeof(init_objects));
 
     init_objects.info = platsupport_get_bootinfo();
     ZF_LOGF_IF(init_objects.info == NULL, "Failed to get bootinfo.");
