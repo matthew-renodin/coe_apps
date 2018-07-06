@@ -18,11 +18,13 @@
  *
  * @TAG(IAI_BSD)
  */
-/*
- * @file prototypes.h
- * @brief Exported prototype definitions for libsync
+/**
+ * @file sync.h
+ * @brief Top-level include for libsync.
  */
 
 #pragma once
 
 
+#include <atomic_sync/prototypes.h>
+#include <atomic_sync/types.h>

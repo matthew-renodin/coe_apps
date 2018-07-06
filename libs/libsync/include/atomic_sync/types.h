@@ -25,4 +25,56 @@
 
 #pragma once
 
+#include <sel4/sel4.h>
+#include <vka/vka.h>
 
+#include <init/init.h>
+#include <sync/mutex.h>
+
+#define LOCK_TRY_AGAIN 1
+#define LOCK_SUCCESS 0
+#define LOCK_ERROR -1
+
+typedef struct userspace_lock {
+    volatile int value;
+} ulock_t;
+
+typedef struct userspace_lock_recursive {
+    volatile int value;
+    volatile seL4_Word holder;
+} ulock_recursive_t;
+
+typedef enum {
+    LOCK_NONE = 0,
+    LOCK_MUTEX_USERSPACE,
+    LOCK_RECURSIVE_USERSPACE,
+    LOCK_NOTIFICATION,
+    LOCK_NOTIFICATION_RECURSIVE
+} lock_type_t;
+
+typedef struct mutex {
+    lock_type_t type;
+    union {
+        ulock_t fast_lock;
+        ulock_recursive_t fast_recursive_lock;
+        sync_mutex_t notification_lock;
+        sync_recursive_mutex_t notification_recursive_lock;
+    }
+    bool_t can_destroy;
+} mutex_t;
+
+typedef struct tcb_queue_node* tcb_queue_t;
+
+struct tcb_queue_node {
+    seL4_CPtr notification;
+    tcb_queue_t next;
+};
+
+typedef struct userspace_cond cond_t;
+
+struct userspace_cond {
+    mutex_t main_lock;
+    mutex_t queue_lock;
+    tcb_queue_t queue_head;
+    tcb_queue_t queue_tail;
+};
