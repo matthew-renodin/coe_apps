@@ -115,7 +115,6 @@ int process_create(const char *elf_file_name,
     }
 #endif
 
-
     /**
      * Setup the new process's virtual memory bookkeeping object
      */
@@ -130,7 +129,6 @@ int process_create(const char *elf_file_name,
         ZF_LOGE("Failed to create child process vspace object");
         return error;
     }
-
 
     /**
      * Load the elf file into the new address space

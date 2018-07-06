@@ -90,6 +90,7 @@ UNUSED static serial_objects_t serial_objects;
 extern vspace_t *muslc_this_vspace;
 extern reservation_t muslc_brk_reservation;
 extern void *muslc_brk_reservation_start;
+extern seL4_CPtr muslc_vspace_root_cap;
 extern char *morecore_area;
 extern size_t morecore_size;
 
@@ -373,6 +374,65 @@ int init_root_task(void) {
     /* Initialize the simple structure's function pointers,
      * Simple manages our bootinfo struct for us. */
     simple_default_init_bootinfo(&init_objects.simple, init_objects.info);
+
+    /**
+     * Remap the root task code and data sections to patch the executable permissions.
+     */
+#ifdef CONFIG_ARCH_ARM
+    extern char __executable_start[];
+    extern char _etext[];
+    extern char _edata[];
+    extern char _end[];
+
+    ZF_LOGD("Remapping root task image... start:%p, etext:%p, edata:%p, end:%p",
+            __executable_start,
+            _etext,
+            _edata,
+            _end);
+
+    int num_image_caps = simple_get_userimage_count(&init_objects.simple);
+    seL4_CPtr page_dir = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+
+    /**
+     * We have to assume here that the image is contiguous in both physical and 
+     * virtual memory. This is pretty brittle, but the only way at the moment.
+     */
+    void* phys_start = seL4_ARM_Page_GetAddress(simple_get_nth_userimage(&init_objects.simple,
+                                                                         0)).paddr;
+    ptrdiff_t offset = (uintptr_t)__executable_start - (uintptr_t)phys_start;
+
+    for(int i = 0; i < num_image_caps; i++) {
+        seL4_CPtr image_frame = simple_get_nth_userimage(&init_objects.simple, i);
+        void *paddr = seL4_ARM_Page_GetAddress(image_frame).paddr;
+        void *vaddr = (void*)((uintptr_t)paddr + offset);
+
+        if(vaddr >= ROUND_DOWN((uintptr_t)__executable_start, PAGE_SIZE_4K) &&
+           vaddr < ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K))
+        {
+            error = seL4_ARCH_Page_Remap(image_frame,
+                                         page_dir,
+                                         seL4_CanRead,
+                                         seL4_ARCH_Default_VMAttributes);
+            if(error) {
+                ZF_LOGE("Failed to remap text page");
+                return -1;
+            }
+        } else if(vaddr >= ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K) &&
+                  vaddr < ROUND_UP((uintptr_t)_end, PAGE_SIZE_4K))
+        {
+            error = seL4_ARCH_Page_Remap(image_frame,
+                                         page_dir,
+                                         seL4_ReadWrite,
+                                         seL4_ARCH_Default_VMAttributes | seL4_ARM_ExecuteNever);
+            if(error) {
+                ZF_LOGE("Failed to remap text page");
+                return -1;
+            }
+
+        }
+    }
+#endif
+
     
     /* Setup allocman with a static pool to bootstrap its bookkeeping.
      * Since we are providing it our simple struct it will fill itself
@@ -388,14 +448,14 @@ int init_root_task(void) {
      * The vka is now backed by the untyped memory in allocman. */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
-    /* Setup the vspace object. This bookkeeps/manages the virtual memory mappings.
-     * We don't want vspace to free objects so we use the "leaky" call.
+    /* 
+     * Setup the vspace object. This bookkeeps/manages the virtual memory mappings.
      */
     error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&init_objects.vspace, 
-                                                            &vspace_bootstrap_data,
-                                                            simple_get_pd(&init_objects.simple),
-                                                            &init_objects.vka,
-                                                            init_objects.info);
+                                                           &vspace_bootstrap_data,
+                                                           simple_get_pd(&init_objects.simple),
+                                                           &init_objects.vka,
+                                                           init_objects.info);
     ZF_LOGF_IF(error, "Failed to bootstrap vspace");
 
     /**
@@ -414,7 +474,7 @@ int init_root_task(void) {
     }
     muslc_brk_reservation.res = &heap_res;
     muslc_this_vspace = &init_objects.vspace;
-
+    muslc_vspace_root_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
 
     /* Malloc is available now */
 
