@@ -180,9 +180,10 @@ int init_process(void) {
     init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
     init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
     init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
+    init_objects.proc_name = init_objects.init_data->proc_name;
 
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.init_data->proc_name);
+    seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.proc_name);
 #endif
 
     zf_log_set_tag_prefix(init_objects.init_data->proc_name);
@@ -362,8 +363,9 @@ int init_root_task(void) {
 
     zf_log_set_tag_prefix("root_task:");
 
+    init_objects.proc_name = "root_task";
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugNameThread(seL4_CapInitThreadTCB, "root_task");
+    seL4_DebugNameThread(seL4_CapInitThreadTCB, init_objects.proc_name);
 #endif
 
     memset(&init_objects, 0, sizeof(init_objects));

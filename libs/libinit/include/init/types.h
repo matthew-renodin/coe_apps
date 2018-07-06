@@ -38,6 +38,8 @@ typedef struct init_objects {
     seL4_CPtr asid_pool_cap;
     seL4_CPtr asid_control_cap;
 
+    const char *proc_name;
+
     InitData *init_data;
 
 } init_objects_t;

@@ -61,6 +61,8 @@ void * worker_thread(void *cookie) {
         seL4_DebugProcMap();
     }
 
+    printf("Thread id %lu\n", (long unsigned)thread_get_id());
+
        
     while(1); 
 

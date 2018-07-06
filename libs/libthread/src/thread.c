@@ -51,7 +51,7 @@ int thread_handle_create(seL4_Word stack_size_pages,
 #ifdef CONFIG_DEBUG_BUILD
     static int counter = 0;
     char *new_name;
-    asprintf(&new_name, "%s-%i", init_objects.init_data->proc_name, ++counter);
+    asprintf(&new_name, "%s-%i", init_objects.proc_name, ++counter);
     seL4_DebugNameThread(handle->tcb.cptr, new_name);
     free(new_name);
 #endif 
@@ -118,7 +118,9 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
 }
 
 seL4_Word thread_get_id() {
-    return 0;
+    seL4_Word tid;
+    //asm("mrs p15, 0, %[tid], c13, c0, 3" : [tid] "=r" (tid) ::);
+    return tid;
 }
 
 
