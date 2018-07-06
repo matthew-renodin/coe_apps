@@ -37,7 +37,7 @@ int mutex_create(mutex_t *mutex, lock_type_t type) {
     case LOCK_MUTEX_USERSPACE:
         return mutex_fast_init(mutex);
     case LOCK_RECURSIVE_USERSPACE:
-        return mutex_recursive_init(mutex);
+        return mutex_fast_recursive_init(mutex);
     case LOCK_NOTIFICATION:
         mutex_set_type(mutex, LOCK_NOTIFICATION);
         __atomic_store_n(&(mutex->can_destroy), true, __ATOMIC_SEQ_CST);
@@ -74,7 +74,7 @@ int mutex_notification_init(mutex_t *mutex, seL4_CPtr notification) {
 int mutex_recursive_init(mutex_t *mutex, seL4_CPtr notification){
     if(mutex_set_type(mutex, LOCK_NOTIFICATION_RECURSIVE) != LOCK_SUCCESS) { return LOCK_ERROR; }
     __atomic_store_n(&(mutex->can_destroy), false, __ATOMIC_SEQ_CST);
-    return sync_mutex_init(&(mutex->notification_recursive_lock), notification);
+    return sync_recursive_mutex_init(&(mutex->notification_recursive_lock), notification);
 }
 
 /* Lock and Unlock Mutex Members */
@@ -84,23 +84,23 @@ mutex_trylock(mutex_t *mutex){
     UNUSED int expected = 0;
     switch(mutex->type) {
     case LOCK_MUTEX_USERSPACE:
-        if (atomic_compare_exchange(&(mutex->fast_lock.value), &_expected, 1)) {
+        if (atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 1)) {
             return LOCK_SUCCESS;
         }
         break;
-    case LOCK_RECURSIVE_USERSPACE:
+    case LOCK_RECURSIVE_USERSPACE: {
         seL4_Word nil_holder = (seL4_Word) NULL;
         seL4_Word expected_holder = thread_id();
         if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &nil_holder, thread_id()) ||
             atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_id())) {
-            __atomic_add_fetch (&(mutex->fast_recursive_lock.value), 1, __ATOMIC_ACQ_REL);
-            return LOCK_SUCCESS;
+            return sync_atomic_increment_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
         }
         break;
+    }
     case LOCK_NOTIFICATION:
-        return sync_mutex_lock(mutex->notification_lock);
+        return sync_mutex_lock(&(mutex->notification_lock));
     case LOCK_NOTIFICATION_RECURSIVE:
-        return sync_recursive_mutex_lock(mutex->notification_recursive_lock);
+        return sync_recursive_mutex_lock(&(mutex->notification_recursive_lock));
     default:
         return LOCK_ERROR;
     }
@@ -133,22 +133,23 @@ int mutex_unlock(mutex_t *mutex) {
             return LOCK_SUCCESS;
         }
         return LOCK_ERROR; /* Was lock unlocked or was value not 0/1 */
-    case LOCK_RECURSIVE_USERSPACE:
+    case LOCK_RECURSIVE_USERSPACE: {
         seL4_Word expected_holder = thread_id();
         if(atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_id())) {
             if(atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 0)) {
-                atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_id())
+                atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_id());
+                return LOCK_SUCCESS;
             } else {
-                __atomic_sub_fetch (&(mutex->fast_recursive_lock.value), 1, __ATOMIC_ACQ_REL);
+                return sync_atomic_decrement_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
             }
-            return LOCK_SUCCESS;
         } else {
             return LOCK_ERROR;
+        }
         }
     case LOCK_NOTIFICATION:
         return sync_mutex_unlock(&(mutex->notification_lock));
     case LOCK_NOTIFICATION_RECURSIVE:
-        return sync_recursive_mutex_unlokc(&(mutex->notification_recursive_lock));
+        return sync_recursive_mutex_unlock(&(mutex->notification_recursive_lock));
     default:
         return LOCK_ERROR;
     }
@@ -165,6 +166,8 @@ int mutex_destroy(mutex_t *mutex){
             case LOCK_NOTIFICATION_RECURSIVE:
                 status = sync_recursive_mutex_destroy(&(init_objects.vka), &(mutex->notification_recursive_lock));
                 break;
+            default:
+                break;
         }
         if (status != LOCK_SUCCESS) { return status; }
     }
@@ -177,13 +180,13 @@ int mutex_destroy(mutex_t *mutex){
  */
 /* Initialize CV and Allocate Members */
 int cond_init(cond_t* cond, lock_type_t lock_type) {
-    UNUSED status = LOCK_SUCCESS;
+    UNUSED int status = LOCK_SUCCESS;
     if (cond == NULL) {
         return LOCK_ERROR;
     }
     if(lock_type == LOCK_NONE) { lock_type = LOCK_MUTEX_USERSPACE; }
-    status = mutex_create(cond->main_lock, lock_type);
-    status = mutex_create(cond->queue_lock, LOCK_MUTEX_USERSPACE);
+    status = mutex_create(&(cond->main_lock), lock_type);
+    status = mutex_create(&(cond->queue_lock), LOCK_MUTEX_USERSPACE);
     cond->queue_head = NULL;
     cond->queue_tail = NULL;
     return LOCK_SUCCESS;
@@ -191,21 +194,21 @@ int cond_init(cond_t* cond, lock_type_t lock_type) {
 
 /* CV Wait and Signal */
 int cond_lock_acquire(cond_t *cond) {
-    return mutex_lock(cond->main_lock);
+    return mutex_lock(&(cond->main_lock));
 }
 
-int cond_wait(cont_t* cond) {
+int cond_wait(cond_t* cond) {
     struct tcb_queue_node waitNode;
     if(get_lock_notification(&(waitNode.notification)) != LOCK_SUCCESS) {
         return LOCK_ERROR;
     }
-    mutex_lock(cond->queue_lock);
+    mutex_lock(&(cond->queue_lock));
     condition_waiters_enqueue(cond, &waitNode);
-    mutex_unlock(cond->queue_lock);
+    mutex_unlock(&(cond->queue_lock));
     
-    mutex_unlock(cond->main_lock);
+    cond_lock_release(cond);
     seL4_Wait(waitNode.notification, NULL);
-    mutex_lock(cond->main_lock);
+    cond_lock_acquire(cond);
     return LOCK_SUCCESS;
 }
 
@@ -227,25 +230,28 @@ signal_once(cond_t* cond) {
 }
 
 int cond_signal(cond_t* cond) {
-    mutex_lock(cond->queue_lock);
+    mutex_lock(&(cond->queue_lock));
     signal_once(cond);
-    mutex_unlock(cond->queue_lock);
+    mutex_unlock(&(cond->queue_lock));
+    return LOCK_SUCCESS;
 }
 
 int cond_broadcast(cond_t* cond) {
-    mutex_lock(cond->queue_lock);
+    mutex_lock(&cond->queue_lock);
     while(signal_once(cond));
-    mutex_unlock(cond->queue_lock);
+    mutex_unlock(&cond->queue_lock);
+    return LOCK_SUCCESS;
 }
 
 int cond_lock_release(cond_t *cond) {
-    return mutex_unlock(cond->main_lock);
+    return mutex_unlock(&(cond->main_lock));
 }
 
 /* De-initalize CV and Destroy members */
 int cond_destroy(cond_t* cond){
-    mutex_destroy(cond->main_lock);
-    mutex_destroy(cond->queue_lock);
-    queue_head = NULL;
-    queue_tail = NULL;
+    mutex_destroy(&(cond->main_lock));
+    mutex_destroy(&(cond->queue_lock));
+    cond->queue_head = NULL;
+    cond->queue_tail = NULL;
+    return LOCK_SUCCESS;
 }

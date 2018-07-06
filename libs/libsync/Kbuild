@@ -4,6 +4,8 @@
 #
 ###############################################################################
 
-libs-$(CONFIG_LIB_SYNC) += libsync
-libsync: libsel4 common $(libc)
+libs-$(CONFIG_LIB_SYNC) += libsync 
+libsync: libsel4 common $(libc) libsel4vka libsel4allocman libplatsupport libsel4platsupport \
+           libsel4simple libsel4vspace \
+           libinit libthread libsel4sync
 

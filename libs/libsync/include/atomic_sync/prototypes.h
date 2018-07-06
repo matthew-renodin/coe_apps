@@ -41,7 +41,7 @@ int mutex_notification_recursive_init(mutex_t *mutex, seL4_CPtr notification);
 
 /* Lock and Unlock Mutex Members */
 int mutex_lock(mutex_t *mutex);
-int mutex_unlock(mutext_t *mutex);
+int mutex_unlock(mutex_t *mutex);
 
 /* De-initialize mutex and destroy members (caution for use with pre-allocated members) */
 int mutex_destroy(mutex_t *mutex);
@@ -57,7 +57,7 @@ int cond_lock_acquire(cond_t *cond);
 int cond_lock_release(cond_t *cond);
 
 /* CV Wait and Signal */
-int cond_wait(cont_t *cond);  /* Precondition: Caller holds main_lock */ 
+int cond_wait(cond_t *cond);  /* Precondition: Caller holds main_lock */ 
 int cond_signal(cond_t *cond);
 int cond_broadcast(cond_t *cond);
 #define cond_signalAll(x) cond_broadcast(x)
