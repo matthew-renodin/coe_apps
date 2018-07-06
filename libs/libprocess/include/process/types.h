@@ -82,7 +82,7 @@ typedef struct process_handle {
     seL4_Word cnode_root_data;
     int cnode_next_free;
 
-    thread_handle_t main_thread;
+    thread_handle_t *main_thread;
 
     InitData init_data;
 

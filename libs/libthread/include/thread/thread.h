@@ -29,4 +29,5 @@
 
 #include <thread/prototypes.h>
 #include <thread/types.h>
+#include <thread/globals.h>
 

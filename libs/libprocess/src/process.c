@@ -176,16 +176,18 @@ int process_create(const char *elf_file_name,
     /**
      * Setup the first thread in our new process
      */
-    error = thread_handle_create_custom(handle->cnode.cptr,
-                                        handle->cnode_root_data,
-                                        handle->fault_ep.cptr,
-                                        handle->page_dir.cptr,
-                                        &handle->vspace,
-                                        handle->attrs.stack_size_pages,
-                                        handle->attrs.priority,
-                                        handle->attrs.cpu_affinity,
-                                        &handle->main_thread);
-    if(error) {
+    thread_attr_t thread_attr = {
+        .stack_size_pages = handle->attrs.stack_size_pages,
+        .priority = handle->attrs.priority,
+        .cpu_affinity = handle->attrs.cpu_affinity,
+    };
+    handle->main_thread = thread_handle_create_custom(handle->cnode.cptr,
+                                                      handle->cnode_root_data,
+                                                      handle->fault_ep.cptr,
+                                                      handle->page_dir.cptr,
+                                                      &handle->vspace,
+                                                      &thread_attr);
+    if(handle->main_thread == NULL) {
         ZF_LOGE("Failed to create a thread.");
         return error;
     }
@@ -225,7 +227,7 @@ int process_create(const char *elf_file_name,
     }
 
     dst.capPtr = INIT_CHILD_TCB_SLOT;
-    vka_cspace_make_path(&init_objects.vka, handle->main_thread.tcb.cptr, &src);
+    vka_cspace_make_path(&init_objects.vka, handle->main_thread->tcb.cptr, &src);
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");
@@ -236,14 +238,14 @@ int process_create(const char *elf_file_name,
     init_data__init(&handle->init_data);
 
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugNameThread(handle->main_thread.tcb.cptr, proc_name);
+    seL4_DebugNameThread(handle->main_thread->tcb.cptr, proc_name);
 #endif
     handle->running = 0;
     handle->name = proc_name;
     handle->init_data.proc_name = (char *)proc_name; /* protobuf uses non const strings */
     handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
     handle->init_data.stack_size_pages = handle->attrs.stack_size_pages; 
-    handle->init_data.stack_vaddr = handle->main_thread.stack_vaddr;
+    handle->init_data.stack_vaddr = (seL4_Word)handle->main_thread->stack_vaddr;
 
     return 0;
 }
@@ -261,7 +263,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return -1;
     }
 
-    if(handle == NULL || handle->entry_point == NULL || handle->main_thread.stack_vaddr == NULL) {
+    if(handle == NULL || handle->entry_point == NULL || handle->main_thread->stack_vaddr == NULL) {
         ZF_LOGE("Invalid process handle pointer passed to process_run.");
         return -2; /* TODO come up with error codes */
     }
@@ -377,7 +379,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     char *envp[] = {heap_addr_env, heap_size_env, init_data_addr_env, init_data_size_env};
     int envc = sizeof(envp)/sizeof(envp[0]);
 
-    uintptr_t initial_stack_pointer = (uintptr_t)handle->main_thread.stack_vaddr - sizeof(seL4_Word); 
+    uintptr_t initial_stack_pointer = (uintptr_t)handle->main_thread->stack_vaddr - sizeof(seL4_Word); 
     /**
      * Copy the elf headers
      */
@@ -575,7 +577,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     /**
      * Start the thread running.
      */
-    error = seL4_TCB_WriteRegisters(handle->main_thread.tcb.cptr,
+    error = seL4_TCB_WriteRegisters(handle->main_thread->tcb.cptr,
                                     1, /* Resume */
                                     0, /* Arch flags */
                                     sizeof(context)/sizeof(seL4_Word),

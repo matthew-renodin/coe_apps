@@ -42,10 +42,7 @@
  * @param[out]  handle              Handle to initialize
  * @return                          Error code, TODO: thread id?
  */
-int thread_handle_create(seL4_Word stack_size_pages,
-                         seL4_Word priority,
-                         seL4_Word cpu_affinity,
-                         thread_handle_t *handle);
+thread_handle_t *thread_handle_create(const thread_attr_t *attrs);
 
 
 /**
@@ -77,29 +74,44 @@ seL4_Word thread_get_id();
 
 
 /**
- * @brief Get a thread handle given a thread ID.
+ * @brief Set the thread-specific data for the currently executing thread.
+ *
+ * This is expected to be typed as thread_handle_t.
+ */
+int thread_set_current_local_storage(thread_handle_t *handle);
+
+/**
+ * @brief Get the thread-specific data for the currently executing thread.
+ *
+ * This is expected to be typed as thread_handle_t.
+ */
+thread_handle_t *thread_get_current_local_storage();
+
+/**
+ * @brief Get the handle for the current thread
  *
  * @return The handle
  */
-thread_handle_t * thread_handle_get(seL4_Word id);
+thread_handle_t * thread_handle_get_current();
 
 
+/**
+ * @brief Wait until a worker thread is finished executing.
+ *
+ * @return the worker thread's return value.
+ */
+void *thread_join(thread_handle_t *handle);
 
-int thread_handle_create_custom(seL4_CPtr cnode,
-                                seL4_CPtr cnode_root_data,
-                                seL4_CPtr fault_ep,
-                                seL4_CPtr page_dir,
-                                vspace_t *vspace,
-                                seL4_Word stack_size_pages,
-                                seL4_Word priority,
-                                seL4_Word cpu_affinity,
-                                thread_handle_t *handle);
+
+thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
+                                             seL4_CPtr cnode_root_data,
+                                             seL4_CPtr fault_ep,
+                                             seL4_CPtr page_dir,
+                                             vspace_t *vspace,
+                                             const thread_attr_t *attr);
 
 
 /* ~~~ TODO: API PHASE 2 ~~~ */
-
-/* simple defaults */
-//int thread_handle_create_default(thread_handle_t *handle);
 
 /* debugging, listing */
 //void thread_print_threads(void);

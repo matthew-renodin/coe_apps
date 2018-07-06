@@ -59,7 +59,7 @@ int mmap_existing_pages_custom(vspace_t *vspace,
                                seL4_CPtr *caps,
                                void **vaddr);
 
-int map_new_stack_custom(vspace_t *vspace,
-                         seL4_CPtr vspace_root_cap,
-                         seL4_Word num_pages,
-                         void **vaddr);
+int mmap_new_stack_custom(vspace_t *vspace,
+                          seL4_CPtr vspace_root_cap,
+                          seL4_Word num_pages,
+                          void **vaddr);

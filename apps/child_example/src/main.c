@@ -46,11 +46,9 @@ UNUSED char *ep_name;
 
 void * worker_thread(void *cookie) {
 
-    printf("Cookie %p: %p\n", &cookie, cookie);
-    
-    printf("Looking up ep: %s\n", ep_name);
+    printf("Worker thread id %lu\n", (long unsigned)thread_get_id());
+
     seL4_CPtr ep_cap = init_lookup_ep(ep_name);
-    printf("Found cap in slot: %d\n", (int)ep_cap);
 
     if(strcmp(my_name, "child1")) {
         seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
@@ -61,12 +59,7 @@ void * worker_thread(void *cookie) {
         seL4_DebugProcMap();
     }
 
-    printf("Thread id %lu\n", (long unsigned)thread_get_id());
-
-       
-    while(1); 
-
-    return NULL;
+    return (void*)42;
 }
 
 
@@ -82,13 +75,14 @@ int main(int argc, char **argv) {
     my_name = argv[0];
     ep_name = argv[1];
 
-    thread_handle_t worker;
-    error = thread_handle_create(256, seL4_MaxPrio, 0, &worker);
-    ZF_LOGF_IF(error, "Failed to create thread.");
+    thread_handle_t *worker = thread_handle_create(&thread_1mb_high_priority);
+    ZF_LOGF_IF(worker == NULL, "Failed to create thread.");
 
-    error = thread_start(&worker, worker_thread, (void*)0xdeadbeef);
+    error = thread_start(worker, worker_thread, (void*)0xdeadbeef);
     ZF_LOGF_IF(error, "Failed to start thread");
 
+    printf("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
+    
     while(1);
 
     return 0;
