@@ -25,6 +25,7 @@
 
 #pragma once
 
-
 #include <atomic_sync/prototypes.h>
 #include <atomic_sync/types.h>
+
+#include <platsupport/sync/atomic.h>

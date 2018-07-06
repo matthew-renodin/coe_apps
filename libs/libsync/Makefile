@@ -14,7 +14,6 @@ CFILES := $(sort $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/*.c))
 HDRFILES := $(sort $(wildcard $(SOURCE_DIR)/include/*)) \
   	    $(sort $(wildcard ${SOURCE_DIR}/arch_include/${ARCH}/*))
 
-
 ###############################################################################
 # FLAGS
 ###############################################################################

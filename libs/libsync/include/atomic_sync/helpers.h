@@ -23,13 +23,13 @@
  * @brief Exported prototype definitions for libsync
  */
 
-#include <sel4/sel4>
-#include <thread/prototypes.h>
+#include <sel4/sel4.h>
+#include <thread/thread.h>
 #include <atomic_sync/types.h>
 
 #pragma once
 
-#define atomic_compare_exchange(lock, expected, value) __atomic_compare_exchange_n((lock), &_expected, (value), 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)
+#define atomic_compare_exchange(lock, expected, value) __atomic_compare_exchange_n((lock), expected, (value), 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)
 
 /* convenience function */
 static inline int
@@ -60,20 +60,19 @@ get_lock_notification(seL4_CPtr *out_notification) {
 static inline void
 condition_waiters_enqueue(cond_t* cond, tcb_queue_t node) {
     if(cond->queue_head == NULL) {
-        cond->queue_tail = node;
         cond->queue_head = node;
     } else {
         cond->queue_tail->next = node;
-        node->prev = cond->queue_tail;
-        cond->queue_tail = node;
     }
-    cond->next = NULL;
+    cond->queue_tail = node;
+    node->next = NULL;
 }
 
 static inline void
 condition_waiters_dequeue(cond_t* cond, tcb_queue_t* node) {
     *node = cond->queue_head;
     cond->queue_head = cond->queue_head->next;
+    (*node)->next = NULL;
     if(cond->queue_head == NULL) {
         cond->queue_tail = NULL; /* For consistency */
     }

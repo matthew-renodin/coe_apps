@@ -25,11 +25,14 @@
 
 #pragma once
 
+#include <stdbool.h>
+
 #include <sel4/sel4.h>
 #include <vka/vka.h>
 
 #include <init/init.h>
 #include <sync/mutex.h>
+#include <sync/recursive_mutex.h>
 
 #define LOCK_TRY_AGAIN 1
 #define LOCK_SUCCESS 0
@@ -59,8 +62,8 @@ typedef struct mutex {
         ulock_recursive_t fast_recursive_lock;
         sync_mutex_t notification_lock;
         sync_recursive_mutex_t notification_recursive_lock;
-    }
-    bool_t can_destroy;
+    };
+    bool can_destroy;
 } mutex_t;
 
 typedef struct tcb_queue_node* tcb_queue_t;
