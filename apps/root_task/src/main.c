@@ -113,10 +113,22 @@ int main(void) {
 
 
 
+    seL4_CPtr child1_ep;
+    err = process_connect_ep_self(&child1, seL4_ReadWrite, "parent", &child1_ep);
+    
+
+
+    seL4_CPtr child2_ep;
+    err = process_connect_notification_self(&child2, seL4_ReadWrite, "parent", &child2_ep);
+
+    void *child2_shmem;
+    err = process_connect_shmem_self(&child2, seL4_ReadWrite, 1, "parent", &child2_shmem);
+
 
     /* Give each process 16 MB (2^20*16) of untyped kernel objects */
     err = process_give_untyped_resources(&child1, 20, 16);
     err = process_give_untyped_resources(&child2, 20, 16);
+
 
 #ifdef CONFIG_PLAT_ZYNQMP
     err = process_map_device_pages_give_caps(&child1,
@@ -136,11 +148,14 @@ int main(void) {
     process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
     process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
 
+    
 
-    //seL4_Yield();
-    //seL4_Yield();
-    //seL4_DebugDumpScheduler();
-    //seL4_DebugProcMap();
+    seL4_MessageInfo_t msg = seL4_Recv(child1_ep, NULL);
+    printf("Recieved msg from child 1: %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
+
+    seL4_Wait(child2_ep, NULL); 
+    printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
+    
     return 0;
 }
 

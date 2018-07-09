@@ -281,8 +281,6 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return -3; /* TODO come up with error codes */
     }
 
-
-
     handle->init_data.cnode_next_free = handle->cnode_next_free;
 
 
@@ -595,6 +593,11 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return error;
     }
 
+    /**
+     * Prevent future changes to the handle
+     */
+    handle->running = 1; 
+
    return 0; 
 }
 
@@ -645,6 +648,12 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
         ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
         return -2; /* TODO come up with error codes */
     }
+
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
 
     ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_bits),
                "Physical address of device not aligned to page boundaries.");
@@ -758,6 +767,11 @@ int process_add_device_irq(process_handle_t *handle,
         return -3;
     }
     
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -4; /* TODO come up with error codes */
+    }
+
     seL4_CPtr irq_cap;
     cspacepath_t irq_path;
     
@@ -768,7 +782,7 @@ int process_add_device_irq(process_handle_t *handle,
     error = vka_cspace_alloc(&init_objects.vka, &irq_cap);
     if(error) {
         ZF_LOGE("Failed to find a slot for the irq cap");
-        return -4;
+        return -5;
     }
     vka_cspace_make_path(&init_objects.vka, irq_cap, &irq_path);
 
@@ -779,7 +793,7 @@ int process_add_device_irq(process_handle_t *handle,
     error = simple_get_IRQ_handler(&init_objects.simple, irq_number, irq_path);
     if(error) {
         ZF_LOGE("Failed to get an IRQ handler cap from the IRQControl cap");
-        return -5;
+        return -6;
     }
 
     /**
@@ -789,7 +803,7 @@ int process_add_device_irq(process_handle_t *handle,
     error = vka_alloc_notification(&init_objects.vka, &irq_notification);
     if(error) {
         ZF_LOGE("Failed to allocate a notification object");
-        return -6;
+        return -7;
     }
     /**
      * bind the notification to our irq cap
@@ -797,7 +811,7 @@ int process_add_device_irq(process_handle_t *handle,
     error = seL4_IRQHandler_SetNotification(irq_cap, irq_notification.cptr);
     if(error) {
         ZF_LOGE("Failed to bind our irq to the notification");
-        return -7;
+        return -8;
     }
 
     /**
@@ -818,8 +832,6 @@ int process_add_device_irq(process_handle_t *handle,
     /* Push onto irq list */
     irq_data->next = handle->init_data.irq_list_head;
     handle->init_data.irq_list_head = irq_data;
-
-
 
     return 0;
 }
@@ -872,24 +884,30 @@ int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
         ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
         return -2; /* TODO come up with error codes */
     }
+    
+    if(handle1->running || handle2->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
 
     vka_object_t ep;
     error = vka_alloc_endpoint(&init_objects.vka, &ep);
     if(error) {
         ZF_LOGE("Failed to allocate ep object.");
-        return -3;
+        return -4;
     }
 
     error = copy_ep_to_proc(handle1, ep.cptr, perms1, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy ep to process 1");
-        return -4;
+        return -5;
     }
     
     error = copy_ep_to_proc(handle2, ep.cptr, perms2, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy ep to process 2");
-        return -5;
+        return -6;
     }
 
     return 0;
@@ -941,6 +959,11 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
         return -2; /* TODO come up with error codes */
     }
 
+    if(handle1->running || handle2->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
     mmap_entry_attr_t attrs = mmap_attr_4k_data;
     attrs.readable = seL4_CapRights_get_capAllowRead(perms1);
     attrs.writable = seL4_CapRights_get_capAllowWrite(perms1);
@@ -950,7 +973,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
     if(caps == NULL) {
         ZF_LOGE("Failed to malloc temporary space for page caps");
-        return -3;
+        return -4;
     }
 
     /**
@@ -965,7 +988,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
     if(error) {
         ZF_LOGE("Failed to map new pages into child");
         free(caps);
-        return -4;
+        return -5;
     }
 
     /**
@@ -979,7 +1002,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
         if(error) {
             ZF_LOGE("Failed to copy cap for shared page.");
             free(caps);
-            return -5;
+            return -6;
         }
         caps[i] = path2.capPtr;
     }
@@ -999,7 +1022,7 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
     if(error) {
         ZF_LOGE("Failed to share pages to second process");
         free(caps);
-        return -5;
+        return -7;
     }
 
     free(caps);
@@ -1007,13 +1030,13 @@ int process_connect_shmem(process_handle_t *handle1, seL4_CapRights_t perms1,
     error = copy_shmem_to_proc(handle1, vaddr1, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
-        return -6;
+        return -8;
     }
 
     error = copy_shmem_to_proc(handle2, vaddr2, num_pages, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy shemem data to proc");
-        return -7;
+        return -9;
     }
 
     return 0;
@@ -1070,23 +1093,28 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
         return -2; /* TODO come up with error codes */
     }
 
+    if(handle1->running || handle2->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
     vka_object_t ep;
     error = vka_alloc_notification(&init_objects.vka, &ep);
     if(error) {
         ZF_LOGE("Failed to allocate notification object.");
-        return -3;
+        return -4;
     }
 
     error = copy_notification_to_proc(handle1, ep.cptr, perms1, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy notification to process 1");
-        return -4;
+        return -5;
     }
     
     error = copy_notification_to_proc(handle2, ep.cptr, perms2, conn_name);
     if(error) {
         ZF_LOGE("Failed to copy notification to process 2");
-        return -5;
+        return -6;
     }
 
     return 0;
@@ -1112,19 +1140,29 @@ int process_give_untyped_resources(process_handle_t *handle,
         return -2; /* TODO come up with error codes */
     }
 
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    ZF_LOGV("Warning:\n"
+            "\tAdding untyped memory to child process!"
+            "\tThis may give it unexpected permissions.");
+
+
     for(seL4_Word i = 0; i < num_objects; i++) {
     
         vka_object_t ut;
         error = vka_alloc_untyped(&init_objects.vka, size_bits, &ut);
         if(error) {
             ZF_LOGE("Failed to allocate ut object.");
-            return -3;
+            return -4;
         }
     
         UntypedData *ut_data = malloc(sizeof(UntypedData));
         if(ut_data == NULL) {
             ZF_LOGE("Failed to allocate Untyped Data");
-            return -4;
+            return -5;
         }
     
         untyped_data__init(ut_data);
@@ -1132,7 +1170,7 @@ int process_give_untyped_resources(process_handle_t *handle,
         ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr, seL4_AllRights); /* TODO:perms?*/
         if(ut_data->cap == seL4_CapNull) {
             ZF_LOGE("Failed to copy ut cap");
-            return -5;
+            return -6;
         }
         
         /* Push the ut data onto the list */
@@ -1141,9 +1179,262 @@ int process_give_untyped_resources(process_handle_t *handle,
 
     }
     
+    return 0;
+}
+
+
+int process_add_existing_ep(process_handle_t *handle,
+                            seL4_CPtr existing_cap,
+                            seL4_CapRights_t perms,
+                            const char *conn_name)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
+        return -2; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    error = copy_ep_to_proc(handle, existing_cap, perms, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process");
+        return -5;
+    }
 
     return 0;
 }
 
+
+int process_connect_ep_self(process_handle_t *handle,
+                            seL4_CapRights_t perms,
+                            const char *conn_name,
+                            seL4_CPtr *new_cap)
+{
+     int error;
+
+     *new_cap = seL4_CapNull;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
+        return -2; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+
+    vka_object_t ep;
+    error = vka_alloc_endpoint(&init_objects.vka, &ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate ep object.");
+        return -4;
+    }
+
+    error = copy_ep_to_proc(handle, ep.cptr, perms, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process");
+        return -5;
+    }
+
+    *new_cap = ep.cptr;
+    return 0;
+}
+
+
+int process_add_existing_notification(process_handle_t *handle,
+                                      seL4_CPtr existing_cap,
+                                      seL4_CapRights_t perms,
+                                      const char *conn_name)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
+        return -2; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    error = copy_notification_to_proc(handle, existing_cap, perms, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy notification to process");
+        return -5;
+    }
+
+    return 0;
+}
+
+
+int process_connect_notification_self(process_handle_t *handle,
+                                      seL4_CapRights_t perms,
+                                      const char *conn_name,
+                                      seL4_CPtr *new_cap)
+{
+     int error;
+
+     *new_cap = seL4_CapNull;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
+        return -2; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    vka_object_t ep;
+    error = vka_alloc_notification(&init_objects.vka, &ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate ep object.");
+        return -4;
+    }
+
+    error = copy_notification_to_proc(handle, ep.cptr, perms, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process 1");
+        return -5;
+    }
+
+    *new_cap = ep.cptr;
+    return 0;
+}
+
+
+int process_connect_shmem_self(process_handle_t *handle,
+                               seL4_CapRights_t perms, 
+                               seL4_Word num_pages,
+                               const char *conn_name,
+                               void **new_shmem)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_shmem.");
+        return -2; /* TODO come up with error codes */
+    }
+
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    mmap_entry_attr_t attrs = mmap_attr_4k_data;
+    attrs.readable = seL4_CapRights_get_capAllowRead(perms);
+    attrs.writable = seL4_CapRights_get_capAllowWrite(perms);
+
+    void *vaddr_child;
+
+    seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
+    if(caps == NULL) {
+        ZF_LOGE("Failed to malloc temporary space for page caps");
+        return -4;
+    }
+
+    /**
+     * First map the pages into handle1
+     */
+    error = mmap_new_pages_custom(&handle->vspace,
+                                  handle->page_dir.cptr,
+                                  num_pages,
+                                  &attrs,
+                                  caps,
+                                  &vaddr_child);
+    if(error) {
+        ZF_LOGE("Failed to map new pages into child");
+        free(caps);
+        return -5;
+    }
+
+    /**
+     * We need to copy the caps to double map them.
+     */
+    for(int i = 0; i < num_pages; i++) {
+        cspacepath_t path1, path2;
+        vka_cspace_make_path(&init_objects.vka, caps[i], &path1);
+        vka_cspace_alloc_path(&init_objects.vka, &path2);
+        error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
+        if(error) {
+            ZF_LOGE("Failed to copy cap for shared page.");
+            free(caps);
+            return -6;
+        }
+        caps[i] = path2.capPtr;
+    }
+
+    /**
+     * Now we map the pages into our own space.
+     */
+    attrs.readable = 1;
+    attrs.writable = 1;
+
+    error = mmap_existing_pages_custom(&init_objects.vspace,
+                                       init_objects.page_dir_cap,
+                                       num_pages,
+                                       &attrs,
+                                       caps,
+                                       new_shmem);
+    if(error) {
+        ZF_LOGE("Failed to share pages to second process");
+        free(caps);
+        return -7;
+    }
+
+    free(caps);
+
+    error = copy_shmem_to_proc(handle, vaddr_child, num_pages, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy shemem data to proc");
+        return -8;
+    }
+
+    return 0;
+}
 
 

@@ -67,15 +67,22 @@ void * worker_thread(void *cookie) {
         seL4_Signal(notifs[0]);
         seL4_Wait(notifs[1], NULL);
         printf("Got a message from #2: %s\n", shmem[1]);
+
+        seL4_Send(init_lookup_ep("parent"), seL4_MessageInfo_new(66,0,0,0));
+
     } else {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
         seL4_DebugProcMap();
         seL4_DebugDumpScheduler();
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
+
         strcpy(shmem[1], "Hello  brother #1!\n");
         seL4_Signal(notifs[1]);
         seL4_Wait(notifs[0], NULL);
         printf("Got a message from #1: %s\n", shmem[0]);
+
+        strcpy((char *)init_lookup_shmem("parent"), "Hi mom!");
+        seL4_Signal(init_lookup_notification("parent"));
     }
 
     return (void*)42;
