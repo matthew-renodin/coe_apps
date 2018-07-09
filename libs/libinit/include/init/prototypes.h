@@ -68,6 +68,10 @@ seL4_CPtr init_lookup_notification(const char *);
 void * init_lookup_shmem(const char *);
 
 
+int init_set_thread_local_storage(void * storage);
+void *init_get_thread_local_storage(void);
+
+
 /**
  * @brief Lookup an IRQ notification ep that was given to us with a string name.
  *

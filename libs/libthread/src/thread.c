@@ -62,50 +62,9 @@ thread_handle_t *thread_handle_create(const thread_attr_t *attr)
     return handle;
 }
 
-int thread_set_current_local_storage(thread_handle_t *handle)
-{
-#ifdef CONFIG_ARCH_AARCH64
-    __asm __volatile ("msr tpidr_el0, %0" :: "r" (handle));
-#endif
-#ifdef CONFIG_ARCH_AARCH32
-    __asm __volatile ("mrc p15, 0, %0, c13, c0, 3" :: "r" (handle) ::);
-#endif
-#ifdef CONFIG_ARCH_X86_64
-    /* TODO */
-    ZF_LOGW("Not implemented yet!");
-#endif
-#ifdef CONFIG_ARCH_IA32
-    /* TODO */
-    ZF_LOGW("Not implemented yet!");
-#endif
-    return 0;
-}
-
-
-thread_handle_t *thread_get_current_local_storage()
-{
-    thread_handle_t *handle = NULL;
-#ifdef CONFIG_ARCH_AARCH64
-    __asm __volatile ("mrs %0, tpidr_el0"  : "=r" (handle) ::);
-#endif
-#ifdef CONFIG_ARCH_AARCH32
-    __asm __volatile ("mcr p15, 0, %0, c13, c0, 3" : "=r" (handle) ::);
-#endif
-#ifdef CONFIG_ARCH_X86_64
-    /* TODO */
-    ZF_LOGE("Not implemented yet!");
-#endif
-#ifdef CONFIG_ARCH_IA32
-    /* TODO */
-    ZF_LOGE("Not implemented yet!");
-#endif
-    return handle;
-}
-
-
 thread_handle_t *thread_handle_get_current()
 {
-    return thread_get_current_local_storage();
+    return (thread_handle_t*)init_get_thread_local_storage();
 }
 
 
@@ -123,7 +82,7 @@ static void thread_init_routine(thread_handle_t *handle,
         return;
     }
 
-    int error = thread_set_current_local_storage(handle);
+    int error = init_set_thread_local_storage((void*)handle);
     if(error) {
         ZF_LOGF("Failed to set thread local storage");
     }
@@ -205,7 +164,7 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
 
 seL4_Word thread_get_id()
 {
-    thread_handle_t *handle = thread_get_current_local_storage();
+    thread_handle_t *handle = (thread_handle_t*)init_get_thread_local_storage();
     if(handle == NULL) {
         /* This is the initial thread case */
         return 0;
@@ -215,7 +174,7 @@ seL4_Word thread_get_id()
 
 seL4_CPtr thread_get_sync_notification()
 {
-    thread_handle_t *handle = thread_get_current_local_storage();
+    thread_handle_t *handle = (thread_handle_t*)init_get_thread_local_storage();
     if(handle == NULL) {
         /* This is the initial thread case */
         return init_objects.sync_notification_cap;
