@@ -234,6 +234,14 @@ int process_create(const char *elf_file_name,
         return error;
     }
 
+    dst.capPtr = INIT_CHILD_SYNC_NOTIFICATION_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->main_thread->sync_notification.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) {
+        ZF_LOGE("Failed to copy cap into child cnode.");
+        return error;
+    }
+
     handle->cnode_next_free = INIT_CHILD_FIRST_FREE_SLOT;
     init_data__init(&handle->init_data);
 
@@ -615,7 +623,6 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
     return handle->cnode_next_free++;
     
 }
-
 
 
 static int process_map_device_pages_optional_caps(process_handle_t *handle, 

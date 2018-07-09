@@ -180,6 +180,7 @@ int init_process(void) {
     init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
     init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
     init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
+    init_objects.sync_notification_cap = INIT_CHILD_SYNC_NOTIFICATION_SLOT;
     init_objects.proc_name = init_objects.init_data->proc_name;
 
 #ifdef CONFIG_DEBUG_BUILD
@@ -524,6 +525,16 @@ int init_root_task(void) {
     print_cpio_data();
 
 
+    /**
+     * Setup a notification for libsync to use.
+     */
+    vka_object_t sync_notification;
+    error = vka_alloc_notification(&init_objects.vka, &sync_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+
     /* Create the bootinfo abstraction layer */
     init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
     init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
@@ -531,6 +542,7 @@ int init_root_task(void) {
     init_objects.cnode_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadCNode);
     init_objects.page_dir_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
     init_objects.fault_cap = seL4_CapNull;
+    init_objects.sync_notification_cap = sync_notification.cptr;
 
     init_objects.initialized = 1;
 
@@ -538,6 +550,8 @@ int init_root_task(void) {
 
     return 0;
 }
+
+
 
 
 seL4_CPtr init_lookup_ep(const char * name)
@@ -556,4 +570,59 @@ seL4_CPtr init_lookup_ep(const char * name)
     }
     ZF_LOGD("Unable to locate an ep with the given name");
     return seL4_CapNull;
+}
+
+
+seL4_CPtr init_lookup_notification(const char * name)
+{
+    if(!init_objects.initialized || !init_objects.init_data) {
+        ZF_LOGE("Invalid usage of init library");
+        return seL4_CapNull;
+    }
+
+    EndpointData * iter = init_objects.init_data->notification_list_head;
+    ZF_LOGD_IF(iter == NULL, "No endpoints in list when looking up.");
+
+    while(iter) {
+        if(strcmp(name, iter->name) == 0) return (seL4_CPtr)iter->cap;
+        iter = iter->next;
+    }
+    ZF_LOGD("Unable to locate an ep with the given name");
+    return seL4_CapNull;
+}
+
+void * init_lookup_shmem(const char * name)
+{
+    if(!init_objects.initialized || !init_objects.init_data) {
+        ZF_LOGE("Invalid usage of init library");
+        return seL4_CapNull;
+    }
+
+    SharedMemoryData * iter = init_objects.init_data->shmem_list_head;
+    ZF_LOGD_IF(iter == NULL, "No shmem regions in list when looking up.");
+
+    while(iter) {
+        if(strcmp(name, iter->name) == 0) return (void *)iter->addr;
+        iter = iter->next;
+    }
+    ZF_LOGD("Unable to locate a shmem region with the given name");
+    return NULL;
+}
+
+void * init_lookup_device_addr(const char * name)
+{
+    if(!init_objects.initialized || !init_objects.init_data) {
+        ZF_LOGE("Invalid usage of init library");
+        return seL4_CapNull;
+    }
+
+    DeviceMemoryData * iter = init_objects.init_data->devmem_list_head;
+    ZF_LOGD_IF(iter == NULL, "No device regions in list when looking up.");
+
+    while(iter) {
+        if(strcmp(name, iter->name) == 0) return (void *)iter->virt_addr;
+        iter = iter->next;
+    }
+    ZF_LOGD("Unable to locate a device region with the given name");
+    return NULL;
 }

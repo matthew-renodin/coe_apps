@@ -93,7 +93,7 @@ int main(void) {
                                 "echo1-shmem");   /* shmem name */
     ZF_LOGF_IF(err, "Failed to create shared memory");
 
-    err = process_connect_notification(&child1, seL4_AllRights,
+    err = process_connect_notification(&child1, seL4_ReadWrite,
                                        &child2, seL4_CanRead,
                                        "echo1-notif");   /* ep name */
     ZF_LOGF_IF(err, "Failed to create notification ep");
@@ -107,7 +107,7 @@ int main(void) {
     ZF_LOGF_IF(err, "Failed to create shared memory");
 
     err = process_connect_notification(&child1, seL4_CanRead,
-                                 &child2, seL4_AllRights,
+                                 &child2, seL4_ReadWrite,
                                  "echo2-notif");   /* ep name */
     ZF_LOGF_IF(err, "Failed to create notification ep");
 

@@ -93,11 +93,11 @@ thread_handle_t *thread_get_current_local_storage()
 #endif
 #ifdef CONFIG_ARCH_X86_64
     /* TODO */
-    ZF_LOGW("Not implemented yet!");
+    ZF_LOGE("Not implemented yet!");
 #endif
 #ifdef CONFIG_ARCH_IA32
     /* TODO */
-    ZF_LOGW("Not implemented yet!");
+    ZF_LOGE("Not implemented yet!");
 #endif
     return handle;
 }
@@ -207,11 +207,22 @@ seL4_Word thread_get_id()
 {
     thread_handle_t *handle = thread_get_current_local_storage();
     if(handle == NULL) {
-        ZF_LOGW("No thread id set");
+        /* This is the initial thread case */
         return 0;
     }
     return handle->thread_id;
 }
+
+seL4_CPtr thread_get_sync_notification()
+{
+    thread_handle_t *handle = thread_get_current_local_storage();
+    if(handle == NULL) {
+        /* This is the initial thread case */
+        return init_objects.sync_notification_cap;
+    }
+    return handle->sync_notification.cptr;
+}
+
 
 
 void *thread_join(thread_handle_t *handle)

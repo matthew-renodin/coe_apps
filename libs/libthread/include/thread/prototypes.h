@@ -72,6 +72,12 @@ void thread_set_name(thread_handle_t *handle, const char *name);
  */
 seL4_Word thread_get_id();
 
+/**
+ * @brief Get the sync notification of the currently executing thread.
+ *
+ * @return The cap to the notification
+ */
+seL4_CPtr thread_get_sync_notification();
 
 /**
  * @brief Set the thread-specific data for the currently executing thread.
@@ -112,9 +118,6 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
 
 
 /* ~~~ TODO: API PHASE 2 ~~~ */
-
 /* debugging, listing */
 //void thread_print_threads(void);
 
-//thread suspend and resume
-//thread terminate join?

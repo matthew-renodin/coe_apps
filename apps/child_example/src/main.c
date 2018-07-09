@@ -50,13 +50,32 @@ void * worker_thread(void *cookie) {
 
     seL4_CPtr ep_cap = init_lookup_ep(ep_name);
 
-    if(strcmp(my_name, "child1")) {
+    char *shmem[2];
+    shmem[0] = init_lookup_shmem("echo1-shmem");
+    shmem[1] = init_lookup_shmem("echo2-shmem");
+
+    seL4_CPtr notifs[2];
+    notifs[0] = init_lookup_notification("echo1-notif");
+    notifs[1] = init_lookup_notification("echo2-notif");
+
+
+    printf("Shmem locations: %p, %p. Notif caps: %lu, %lu\n", shmem[0], shmem[1], notifs[0], notifs[1]);
+
+    if(strcmp(my_name, "child1") == 0) {
         seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
+        strcpy(shmem[0], "Hello  brother #2!\n");
+        seL4_Signal(notifs[0]);
+        seL4_Wait(notifs[1], NULL);
+        printf("Got a message from #2: %s\n", shmem[1]);
     } else {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
-        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
-        seL4_DebugDumpScheduler();
         seL4_DebugProcMap();
+        seL4_DebugDumpScheduler();
+        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
+        strcpy(shmem[1], "Hello  brother #1!\n");
+        seL4_Signal(notifs[1]);
+        seL4_Wait(notifs[0], NULL);
+        printf("Got a message from #1: %s\n", shmem[0]);
     }
 
     return (void*)42;

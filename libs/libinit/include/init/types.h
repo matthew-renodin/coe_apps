@@ -37,6 +37,7 @@ typedef struct init_objects {
     seL4_CPtr fault_cap;
     seL4_CPtr asid_pool_cap;
     seL4_CPtr asid_control_cap;
+    seL4_CPtr sync_notification_cap;
 
     const char *proc_name;
 
