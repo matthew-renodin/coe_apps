@@ -76,8 +76,9 @@ struct tcb_queue_node {
 typedef struct userspace_cond cond_t;
 
 struct userspace_cond {
-    mutex_t main_lock;
+    mutex_t *main_lock;
     mutex_t queue_lock;
     tcb_queue_t queue_head;
     tcb_queue_t queue_tail;
+    bool can_destroy_main_lock;
 };
