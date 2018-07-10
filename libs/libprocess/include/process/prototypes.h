@@ -166,18 +166,6 @@ int process_add_my_device_irq(process_handle_t *handle,
 
 /****** IPC Configuration ******/
 
-/**
- * @brief Connect two processes with a new endpoint for IPC.
- *
- * @param   handle1     First process to give new ep
- * @param   perms1      Permissions to give first process
- * @param   handle1     Second process to give new ep
- * @param   perms1      Permissions to give Second process
- * @param   conn_name   Name of the connection for lookups
- */
-int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
-                       process_handle_t *handle2, seL4_CapRights_t perms2,
-                       const char *conn_name);
 
 
 /**
@@ -209,37 +197,7 @@ int process_connect_notification(process_handle_t *handle1, seL4_CapRights_t per
                                  process_handle_t *handle2, seL4_CapRights_t perms2,
                                  const char *conn_name);
 
-/**
- * @brief Connect a child and parent process with an endpoint.
- *
- * @warning The name of this ep is only given to the child. The parent cannot
- *          use init_lookup_* to get the cap.
- *
- * @param       handle      Child process handle
- * @param       perms       Permissions to give the child
- * @param       conn_name   Name to give the ep for the child to use in lookups.
- * @param[out]  new_cap     The parent's cap to the new ep.
- */
-int process_connect_ep_self(process_handle_t *handle,
-                            seL4_CapRights_t perms,
-                            const char *conn_name,
-                            seL4_CPtr *new_cap);
 
-/**
- * @brief Connect a child process with an existing ep in the parent's cnode.
- *
- * @warning The name of this ep is only given to the child. The parent cannot
- *          use init_lookup_* to get the cap.
- *
- * @param   handle          Child process handle
- * @param   existing_cap    Existing ep cap to copy to child
- * @param   perms           Permissions to give the child
- * @param   conn_name       Name to give the ep for the child to use in lookups.
- */
-int process_add_existing_ep(process_handle_t *handle,
-                            seL4_CPtr existing_cap,
-                            seL4_CapRights_t perms,
-                            const char *conn_name);
 
 /**
  * @brief Connect a child and parent process with a notification.
@@ -268,10 +226,10 @@ int process_connect_notification_self(process_handle_t *handle,
  * @param   perms           Permissions to give the child
  * @param   conn_name       Name to give the notification for the child to use in lookups.
  */
-int process_add_existing_notification(process_handle_t *handle,
-                                      seL4_CPtr existing_cap,
-                                      seL4_CapRights_t perms,
-                                      const char *conn_name);
+int process_connect_existing_notification(process_handle_t *handle,
+                                          seL4_CPtr existing_cap,
+                                          seL4_CapRights_t perms,
+                                          const char *conn_name);
 
 /**
  * @brief Connect a child and parent process with shared memory.
@@ -286,11 +244,123 @@ int process_add_existing_notification(process_handle_t *handle,
  * @param[out]  new_shmem   The parent's virtual address of the new shared memory region.
  */
 int process_connect_shmem_self(process_handle_t *handle,
-                                      seL4_CapRights_t perms,
-                                      seL4_Word num_pages,
-                                      const char *conn_name,
-                                      void **new_shmem);
+                               seL4_CapRights_t perms,
+                               seL4_Word num_pages,
+                               const char *conn_name,
+                               void **new_shmem);
 
+
+
+
+
+/****** Endpoint IPC Configuration ******/
+
+
+/**
+ * @brief Connect many child processes with an new endpoint which is also shared with the parent.
+ *
+ * @warning The name of this ep is only given to the child. The parent cannot
+ *          use init_lookup_* to get the cap.
+ *
+ * @param       handle      A list of child process handle pointers to connect
+ * @param       perms       A parrallel list of permissions to give the children
+ * @param       num_procs   The number of processes in the array
+ * @param       conn_name   Name to give the ep for the children to use in lookups.
+ * @param[out]  new_cap     The parent's cap to the new ep.
+ */
+int process_connect_many_to_self_endpoint(process_handle_t **handle_list,
+                                          seL4_CapRights_t *perms_list,
+                                          seL4_Word num_procs,
+                                          const char *conn_name,
+                                          seL4_CPtr *new_self_cap);
+
+/**
+ * @brief Connect many child processes with an new endpoint.
+ *
+ * @param   handle          A list of child process handle pointers to connect
+ * @param   perms           A parrallel list of permissions to give the children
+ * @param   num_procs       The number of processes in the array
+ * @param   conn_name       Name to give the ep for the children to use in lookups.
+ */
+int process_connect_many_to_endpoint(process_handle_t **handle_list,
+                                     seL4_CapRights_t *perms_list,
+                                     seL4_Word num_procs,
+                                     const char *conn_name);
+
+/**
+ * @brief Connect a child process with an existing ep in the parent's cnode.
+ *
+ * @warning The name of this ep is only given to the child. The parent cannot
+ *          use init_lookup_* to get the cap.
+ *
+ * @param   handle          Child process handle
+ * @param   existing_cap    Existing ep cap to copy to child
+ * @param   perms           Permissions to give the child
+ * @param   conn_name       Name to give the ep for the child to use in lookups.
+ */
+int process_connect_to_existing_endpoint(process_handle_t *handle,
+                                         seL4_CPtr existing_cap,
+                                         seL4_CapRights_t perms,
+                                         const char *conn_name);
+
+/**
+ * @brief Connect a child and parent process with an endpoint.
+ *
+ * @warning The name of this ep is only given to the child. The parent cannot
+ *          use init_lookup_* to get the cap.
+ *
+ * @param       handle      Child process handle
+ * @param       perms       Permissions to give the child
+ * @param       conn_name   Name to give the ep for the child to use in lookups.
+ * @param[out]  new_cap     The parent's cap to the new ep.
+ */
+int process_connect_to_self_endpoint(process_handle_t *handle,
+                                     seL4_CapRights_t perms,
+                                     const char *conn_name,
+                                     seL4_CPtr *new_cap);
+
+/**
+ * @brief Connect two processes with a new endpoint for IPC.
+ *
+ * @param   handle1     First process to give new ep
+ * @param   perms1      Permissions to give first process
+ * @param   handle1     Second process to give new ep
+ * @param   perms1      Permissions to give Second process
+ * @param   conn_name   Name of the connection for lookups
+ */
+int process_connect_pair_to_endpoint(process_handle_t *handle1, seL4_CapRights_t perms1,
+                                     process_handle_t *handle2, seL4_CapRights_t perms2,
+                                     const char *conn_name);
+
+
+
+
+
+
+
+
+
+int process_connect_many_to_notification(process_handle_t **handle_list,
+                                         seL4_CapRights_t *perms_list,
+                                         seL4_Word num_procs,
+                                         const char *conn_name);
+
+
+
+
+
+
+int process_connect_shmem_to_many(process_handle_t **handle_list,
+                                  seL4_CapRights_t *perms_list,
+                                  seL4_Word num_procs,
+                                  const char *conn_name);
+
+
+
+int process_connect_RPC_server_to_clients(process_handle_t *server,
+                                          process_handle_t **clients,
+                                          seL4_Word num_clients,
+                                          const char *conn_name);
 
 /****** Advanced Configuration ******/
 

@@ -58,7 +58,6 @@ void * worker_thread(void *cookie) {
     notifs[0] = init_lookup_notification("echo1-notif");
     notifs[1] = init_lookup_notification("echo2-notif");
 
-
     printf("Shmem locations: %p, %p. Notif caps: %lu, %lu\n", shmem[0], shmem[1], notifs[0], notifs[1]);
 
     if(strcmp(my_name, "child1") == 0) {
@@ -77,6 +76,7 @@ void * worker_thread(void *cookie) {
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
 
         strcpy(shmem[1], "Hello  brother #1!\n");
+        printf("After\n");
         seL4_Signal(notifs[1]);
         seL4_Wait(notifs[0], NULL);
         printf("Got a message from #1: %s\n", shmem[0]);

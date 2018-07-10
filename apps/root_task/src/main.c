@@ -82,9 +82,9 @@ int main(void) {
     ZF_LOGF_IF(err, "Failed to create child2");
 
 
-    err = process_connect_ep(&child1, seL4_AllRights,
-                             &child2, seL4_AllRights,
-                             "echo1-ep");   /* ep name */
+    err = process_connect_pair_to_endpoint(&child1, seL4_AllRights,
+                                           &child2, seL4_AllRights,
+                                           "echo1-ep");
     ZF_LOGF_IF(err, "Failed to create ep");
 
     err = process_connect_shmem(&child1, seL4_ReadWrite,
@@ -107,14 +107,14 @@ int main(void) {
     ZF_LOGF_IF(err, "Failed to create shared memory");
 
     err = process_connect_notification(&child1, seL4_CanRead,
-                                 &child2, seL4_ReadWrite,
+                                       &child2, seL4_ReadWrite,
                                  "echo2-notif");   /* ep name */
     ZF_LOGF_IF(err, "Failed to create notification ep");
 
 
 
     seL4_CPtr child1_ep;
-    err = process_connect_ep_self(&child1, seL4_ReadWrite, "parent", &child1_ep);
+    err = process_connect_to_self_endpoint(&child1, seL4_ReadWrite, "parent", &child1_ep);
     
 
 

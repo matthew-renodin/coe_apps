@@ -79,7 +79,7 @@
 /**
  * Global variable for the bookkeeping objects.
  */
-init_objects_t init_objects;
+init_objects_t init_objects = {0};
 
 UNUSED static serial_objects_t serial_objects;
 

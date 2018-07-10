@@ -49,7 +49,8 @@ typedef struct process_attr {
 
     seL4_Word cnode_size_bits;
 
-    seL4_Word bookeeping_memory_size;
+    bool create_fault_ep;
+    seL4_CPtr existing_fault_ep;
 } process_attr_t;
 
 

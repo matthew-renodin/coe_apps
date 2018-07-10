@@ -59,11 +59,16 @@ int process_create(const char *elf_file_name,
         ZF_LOGE("Failed to allocate a cnode.");
         return error;
     }
-    
-    error = vka_alloc_endpoint(&init_objects.vka, &handle->fault_ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate a fault endpoint.");
-        return error;
+   
+    if(handle->attrs.create_fault_ep) {
+        error = vka_alloc_endpoint(&init_objects.vka, &handle->fault_ep);
+        if(error) {
+            ZF_LOGE("Failed to allocate a fault endpoint.");
+            return error;
+        }
+    } else {
+        /* TODO just setting this field feels dirty */
+        handle->fault_ep.cptr = handle->attrs.existing_fault_ep;
     }
 
     error = vka_alloc_vspace_root(&init_objects.vka, &handle->page_dir);
@@ -179,13 +184,15 @@ int process_create(const char *elf_file_name,
         ZF_LOGE("Failed to copy cap into child cnode.");
         return error;
     }
-    
-    dst.capPtr = INIT_CHILD_FAULT_EP_SLOT;
-    vka_cspace_make_path(&init_objects.vka, handle->fault_ep.cptr, &src);
-    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
-    if(error) {
-        ZF_LOGE("Failed to copy cap into child cnode.");
-        return error;
+  
+    if(handle->fault_ep.cptr != seL4_CapNull) {
+        dst.capPtr = INIT_CHILD_FAULT_EP_SLOT;
+        vka_cspace_make_path(&init_objects.vka, handle->fault_ep.cptr, &src);
+        error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+        if(error) {
+            ZF_LOGE("Failed to copy cap into child cnode.");
+            return error;
+        }
     }
 
     dst.capPtr = INIT_CHILD_PAGE_DIR_SLOT;

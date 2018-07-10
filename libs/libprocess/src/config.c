@@ -396,55 +396,7 @@ int process_add_device_irq(process_handle_t *handle,
 
 
 
-int process_connect_ep(process_handle_t *handle1, seL4_CapRights_t perms1,
-                       process_handle_t *handle2, seL4_CapRights_t perms2,
-                       const char *conn_name)
-{
-    int error;
 
-    /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle1 == NULL || handle2 == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
-        return -2; /* TODO come up with error codes */
-    }
-    
-    if(handle1->running || handle2->running) {
-        ZF_LOGW("Process is already running.");
-        return -3; /* TODO come up with error codes */
-    }
-
-
-    vka_object_t ep;
-    error = vka_alloc_endpoint(&init_objects.vka, &ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate ep object.");
-        return -4;
-    }
-
-    error = copy_ep_to_proc(handle1, ep.cptr, perms1, conn_name);
-    if(error) {
-        ZF_LOGE("Failed to copy ep to process 1");
-        vka_free_object(&init_objects.vka, &ep);
-        return -5;
-    }
-    
-    error = copy_ep_to_proc(handle2, ep.cptr, perms2, conn_name);
-    if(error) {
-        ZF_LOGE("Failed to copy ep to process 2");
-        vka_free_object(&init_objects.vka, &ep);
-        return -6;
-    }
-
-    free_parent_cap(ep.cptr);
-
-    return 0;
-}
 
 
 
@@ -670,89 +622,14 @@ int process_give_untyped_resources(process_handle_t *handle,
 }
 
 
-int process_add_existing_ep(process_handle_t *handle,
-                            seL4_CPtr existing_cap,
-                            seL4_CapRights_t perms,
-                            const char *conn_name)
-{
-    int error;
-
-    /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
-        return -2; /* TODO come up with error codes */
-    }
-    
-    if(handle->running) {
-        ZF_LOGW("Process is already running.");
-        return -3; /* TODO come up with error codes */
-    }
-
-    error = copy_ep_to_proc(handle, existing_cap, perms, conn_name);
-    if(error) {
-        ZF_LOGE("Failed to copy ep to process");
-        return -5;
-    }
-
-    return 0;
-}
 
 
-int process_connect_ep_self(process_handle_t *handle,
-                            seL4_CapRights_t perms,
-                            const char *conn_name,
-                            seL4_CPtr *new_cap)
-{
-     int error;
-
-     *new_cap = seL4_CapNull;
-
-    /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
-        return -2; /* TODO come up with error codes */
-    }
-    
-    if(handle->running) {
-        ZF_LOGW("Process is already running.");
-        return -3; /* TODO come up with error codes */
-    }
 
 
-    vka_object_t ep;
-    error = vka_alloc_endpoint(&init_objects.vka, &ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate ep object.");
-        return -4;
-    }
-
-    error = copy_ep_to_proc(handle, ep.cptr, perms, conn_name);
-    if(error) {
-        ZF_LOGE("Failed to copy ep to process");
-        return -5;
-    }
-
-    *new_cap = ep.cptr;
-    return 0;
-}
-
-
-int process_add_existing_notification(process_handle_t *handle,
-                                      seL4_CPtr existing_cap,
-                                      seL4_CapRights_t perms,
-                                      const char *conn_name)
+int process_connect_existing_notification(process_handle_t *handle,
+                                          seL4_CPtr existing_cap,
+                                          seL4_CapRights_t perms,
+                                          const char *conn_name)
 {
     int error;
 
@@ -926,6 +803,165 @@ int process_connect_shmem_self(process_handle_t *handle,
     }
 
     return 0;
+}
+
+
+
+
+/******************************************************************************
+ * ENDPOINT CONNECTIONS
+ *****************************************************************************/
+
+int process_connect_many_to_self_endpoint(process_handle_t **handle_list,
+                                          seL4_CapRights_t *perms_list,
+                                          seL4_Word num_procs,
+                                          const char *conn_name,
+                                          seL4_CPtr *new_self_cap)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle_list == NULL) {
+        ZF_LOGE("Invalid process handle list passed to process_connect_ep");
+        return -2; /* TODO come up with error codes */
+    }
+
+    if(new_self_cap == NULL) {
+        ZF_LOGE("Null out pointer passed");
+        return -3;
+    }
+
+    vka_object_t ep;
+    error = vka_alloc_endpoint(&init_objects.vka, &ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate endpoint object.");
+        return -4;
+    }
+
+
+    for(int i = 0; i < num_procs; i++) {
+        process_handle_t *handle = handle_list[i];
+
+        if(handle == NULL) {
+            ZF_LOGE("Null process handle in list");
+            vka_free_object(&init_objects.vka, &ep);
+            return -5;
+        }
+
+        if(handle->running) {
+            ZF_LOGE("Cannot modify/configure a running process");
+            vka_free_object(&init_objects.vka, &ep);
+            return -6;
+        }
+
+        error = copy_ep_to_proc(handle, ep.cptr, perms_list[i], conn_name);
+        if(error) {
+            ZF_LOGE("Failed to copy ep to process 1");
+            vka_free_object(&init_objects.vka, &ep);
+            return -7;
+        }
+    }
+
+    *new_self_cap = ep.cptr;
+    return 0;
+}
+
+int process_connect_many_to_endpoint(process_handle_t **handle_list,
+                                          seL4_CapRights_t *perms_list,
+                                          seL4_Word num_procs,
+                                          const char *conn_name)
+{
+    int error;
+    seL4_CPtr self_cap;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    error = process_connect_many_to_self_endpoint(handle_list,
+                                                  perms_list,
+                                                  num_procs,
+                                                  conn_name,
+                                                  &self_cap);
+    if(error) {
+        ZF_LOGE("Failed to connect many");
+        return -1;
+    }
+
+    free_parent_cap(self_cap);
+
+    return 0;
+}
+
+
+
+int process_connect_to_existing_endpoint(process_handle_t *handle,
+                                         seL4_CPtr existing_cap,
+                                         seL4_CapRights_t perms,
+                                         const char *conn_name)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed to process_connect_ep.");
+        return -2; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    error = copy_ep_to_proc(handle, existing_cap, perms, conn_name);
+    if(error) {
+        ZF_LOGE("Failed to copy ep to process");
+        return -5;
+    }
+
+    return 0;
+}
+
+
+int process_connect_to_self_endpoint(process_handle_t *handle,
+                                     seL4_CapRights_t perms,
+                                     const char *conn_name,
+                                     seL4_CPtr *new_cap)
+{
+    return process_connect_many_to_self_endpoint(&handle,
+                                                 &perms,
+                                                 1,
+                                                 conn_name,
+                                                 new_cap);
+}
+
+
+int process_connect_pair_to_endpoint(process_handle_t *handle1, seL4_CapRights_t perms1,
+                                     process_handle_t *handle2, seL4_CapRights_t perms2,
+                                     const char *conn_name)
+{
+    process_handle_t *handle_list[] = {handle1, handle2};
+    seL4_CapRights_t perms_list[] =   {perms1,  perms2};
+
+    return process_connect_many_to_endpoint(handle_list,
+                                            perms_list,
+                                            2,
+                                            conn_name);
 }
 
 
