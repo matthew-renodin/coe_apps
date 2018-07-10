@@ -76,7 +76,6 @@ void * worker_thread(void *cookie) {
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
 
         strcpy(shmem[1], "Hello  brother #1!\n");
-        printf("After\n");
         seL4_Signal(notifs[1]);
         seL4_Wait(notifs[0], NULL);
         printf("Got a message from #1: %s\n", shmem[0]);

@@ -68,12 +68,14 @@ int main(void) {
     process_handle_t child1, child2;
 
 
+    /**
+     * Create two new processes
+     */
     err = process_create("child_example", /* File name */
                          "child1",        /* Process name */
                          &process_default_attrs,
                          &child1);
     ZF_LOGF_IF(err, "Failed to create child1");
-
 
     err = process_create("child_example", /* File name */
                          "child2",        /* Process name */
@@ -81,53 +83,75 @@ int main(void) {
                          &child2);
     ZF_LOGF_IF(err, "Failed to create child2");
 
-
+    /**
+     * Give the new processes an IPC endpoint to communicate
+     */
     err = process_connect_pair_to_endpoint(&child1, seL4_AllRights,
                                            &child2, seL4_AllRights,
                                            "echo1-ep");
     ZF_LOGF_IF(err, "Failed to create ep");
 
-    err = process_connect_shmem(&child1, seL4_ReadWrite,
-                                &child2, seL4_CanRead,
-                                1,                /* Number of pages */
-                                "echo1-shmem");   /* shmem name */
+
+    /**
+     * Also give the new processes two pages of shared memory.
+     * Each page will be writable by only one process.
+     */
+    err = process_connect_pair_to_shmem(&child1, seL4_ReadWrite,
+                                        &child2, seL4_CanRead,
+                                        1, /* Number of pages */
+                                        "echo1-shmem");   
     ZF_LOGF_IF(err, "Failed to create shared memory");
 
-    err = process_connect_notification(&child1, seL4_ReadWrite,
-                                       &child2, seL4_CanRead,
-                                       "echo1-notif");   /* ep name */
+    err = process_connect_pair_to_shmem(&child1, seL4_CanRead,
+                                        &child2, seL4_ReadWrite,
+                                        1, /* Number of pages */
+                                        "echo2-shmem"); 
+    ZF_LOGF_IF(err, "Failed to create shared memory");
+
+
+    /**
+     * To synchronize writes/reads to the shared memory use two notification eps.
+     */
+    err = process_connect_pair_to_notification(&child1, seL4_ReadWrite,
+                                               &child2, seL4_CanRead,
+                                               "echo1-notif"); 
+    ZF_LOGF_IF(err, "Failed to create notification ep");
+
+    err = process_connect_pair_to_notification(&child1, seL4_CanRead,
+                                               &child2, seL4_ReadWrite,
+                                               "echo2-notif");
     ZF_LOGF_IF(err, "Failed to create notification ep");
 
 
-
-    err = process_connect_shmem(&child1, seL4_CanRead,
-                                &child2, seL4_ReadWrite,
-                                1,                /* Number of pages */
-                                "echo2-shmem");   /* shmem name */
-    ZF_LOGF_IF(err, "Failed to create shared memory");
-
-    err = process_connect_notification(&child1, seL4_CanRead,
-                                       &child2, seL4_ReadWrite,
-                                 "echo2-notif");   /* ep name */
-    ZF_LOGF_IF(err, "Failed to create notification ep");
-
-
-
+    /**
+     * Give child 1 an ep to send messages to us, the parent.
+     */
     seL4_CPtr child1_ep;
     err = process_connect_to_self_endpoint(&child1, seL4_ReadWrite, "parent", &child1_ep);
-    
+    ZF_LOGF_IF(err, "Failed to create self ep.");
 
 
+    /**
+     * Give child 2 a notification and shared memory to write messages to us, the parent
+     */
     seL4_CPtr child2_ep;
-    err = process_connect_notification_self(&child2, seL4_ReadWrite, "parent", &child2_ep);
+    err = process_connect_to_self_notification(&child2, seL4_ReadWrite, "parent", &child2_ep);
+    ZF_LOGF_IF(err, "Failed to create self notification.");
 
     void *child2_shmem;
-    err = process_connect_shmem_self(&child2, seL4_ReadWrite, 1, "parent", &child2_shmem);
+    err = process_connect_to_self_shmem(&child2, seL4_ReadWrite, 1, "parent", &child2_shmem);
+    ZF_LOGF_IF(err, "Failed to create self notification.");
 
 
-    /* Give each process 16 MB (2^20*16) of untyped kernel objects */
+    /**
+     * Give each process 16 MB (2^20*16) of untyped kernel objects
+     */
     err = process_give_untyped_resources(&child1, 20, 16);
+    ZF_LOGF_IF(err, "Failed to give untyped.");
+
     err = process_give_untyped_resources(&child2, 20, 16);
+    ZF_LOGF_IF(err, "Failed to give untyped.");
+
 
 
 #ifdef CONFIG_PLAT_ZYNQMP
@@ -145,8 +169,8 @@ int main(void) {
 
     char *argv1[] = { "child1", "echo1-ep" }; 
     char *argv2[] = { "child2", "echo1-ep" };
-    process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
-    process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
+    err = process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
+    err = process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
 
     
 
