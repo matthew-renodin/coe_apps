@@ -41,24 +41,13 @@ mutex_set_type(mutex_t *mutex, lock_type_t type) {
     return LOCK_SUCCESS;
 }
 
-static inline seL4_Word 
-thread_id() {
-    return thread_get_id();
-}
-
-static inline int
-get_lock_notification(seL4_CPtr *out_notification) {
-    if(out_notification == NULL) { return LOCK_ERROR; }
-    *out_notification = 7; // TODO
-    return LOCK_SUCCESS;
-}
-
 /* 
  * Waiters enqueue and dequeue have the precondition that
  * the queue lock is held before use to avoid race conditions
  */
 static inline void
 condition_waiters_enqueue(cond_t* cond, tcb_queue_t node) {
+    if (cond == NULL || node == NULL) { return; }
     if(cond->queue_head == NULL) {
         cond->queue_head = node;
     } else {
@@ -70,10 +59,12 @@ condition_waiters_enqueue(cond_t* cond, tcb_queue_t node) {
 
 static inline void
 condition_waiters_dequeue(cond_t* cond, tcb_queue_t* node) {
+    if(node == NULL) { return; }
+    if(cond == NULL || cond->queue_head == NULL) { *node = NULL; return; }
     *node = cond->queue_head;
     cond->queue_head = cond->queue_head->next;
     (*node)->next = NULL;
     if(cond->queue_head == NULL) {
-        cond->queue_tail = NULL; /* For consistency */
+        cond->queue_tail = NULL;
     }
 }
