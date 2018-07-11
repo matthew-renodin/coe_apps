@@ -10,75 +10,53 @@
 #include <sel4/sel4.h>
 #include <init/init.h>
 
-seL4_CPtr init_lookup_ep(const char * name)
+
+
+#define LOOKUP(RET, SUFFIX, TYPE, LIST, FIELD)                                  \
+    RET init_lookup_##SUFFIX(const char * name)                                 \
+    {                                                                           \
+        if(!init_objects.initialized || !init_objects.init_data) {              \
+            ZF_LOGE("Invalid usage of init library");                           \
+            return 0;                                                           \
+        }                                                                       \
+        TYPE *iter = init_objects.init_data->LIST;                              \
+        ZF_LOGD_IF(iter == NULL, "No elements in list when looking up.");       \
+        while(iter) {                                                           \
+            if(strcmp(name, iter->name) == 0) return (RET)iter->FIELD;          \
+            iter = iter->next;                                                  \
+        }                                                                       \
+        ZF_LOGD("Unable to locate init data with the given name");              \
+        return 0;                                                               \
+    }
+
+LOOKUP(seL4_CPtr,   endpoint,       EndpointData,       ep_list_head,           cap);
+LOOKUP(seL4_CPtr,   notification,   EndpointData,       notification_list_head, cap);
+LOOKUP(void*,       shmem,          SharedMemoryData,   shmem_list_head,        addr);
+LOOKUP(void*,       device_addr,    DeviceMemoryData,   devmem_list_head,       virt_addr);
+
+init_irq_caps_t init_lookup_irq(const char * name)
 {
     if(!init_objects.initialized || !init_objects.init_data) {
         ZF_LOGE("Invalid usage of init library");
-        return seL4_CapNull;
+        return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
     }
 
-    EndpointData * iter = init_objects.init_data->ep_list_head;
-    ZF_LOGD_IF(iter == NULL, "No endpoints in list when looking up.");
+    IrqData * iter = init_objects.init_data->irq_list_head;
+    ZF_LOGD_IF(iter == NULL, "No elements in list when looking up.");
 
     while(iter) {
-        if(strcmp(name, iter->name) == 0) return (seL4_CPtr)iter->cap;
+        if(strcmp(name, iter->name) == 0) {
+            return (init_irq_caps_t) {
+                .ep = iter->ep_cap,
+                .irq = iter->irq_cap,
+            };
+        }
         iter = iter->next;
     }
-    ZF_LOGD("Unable to locate an ep with the given name");
-    return seL4_CapNull;
+    ZF_LOGD("Unable to locate init data with the given name");
+    return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
 }
 
 
-seL4_CPtr init_lookup_notification(const char * name)
-{
-    if(!init_objects.initialized || !init_objects.init_data) {
-        ZF_LOGE("Invalid usage of init library");
-        return seL4_CapNull;
-    }
 
-    EndpointData * iter = init_objects.init_data->notification_list_head;
-    ZF_LOGD_IF(iter == NULL, "No endpoints in list when looking up.");
 
-    while(iter) {
-        if(strcmp(name, iter->name) == 0) return (seL4_CPtr)iter->cap;
-        iter = iter->next;
-    }
-    ZF_LOGD("Unable to locate an ep with the given name");
-    return seL4_CapNull;
-}
-
-void * init_lookup_shmem(const char * name)
-{
-    if(!init_objects.initialized || !init_objects.init_data) {
-        ZF_LOGE("Invalid usage of init library");
-        return seL4_CapNull;
-    }
-
-    SharedMemoryData * iter = init_objects.init_data->shmem_list_head;
-    ZF_LOGD_IF(iter == NULL, "No shmem regions in list when looking up.");
-
-    while(iter) {
-        if(strcmp(name, iter->name) == 0) return (void *)iter->addr;
-        iter = iter->next;
-    }
-    ZF_LOGD("Unable to locate a shmem region with the given name");
-    return NULL;
-}
-
-void * init_lookup_device_addr(const char * name)
-{
-    if(!init_objects.initialized || !init_objects.init_data) {
-        ZF_LOGE("Invalid usage of init library");
-        return seL4_CapNull;
-    }
-
-    DeviceMemoryData * iter = init_objects.init_data->devmem_list_head;
-    ZF_LOGD_IF(iter == NULL, "No device regions in list when looking up.");
-
-    while(iter) {
-        if(strcmp(name, iter->name) == 0) return (void *)iter->virt_addr;
-        iter = iter->next;
-    }
-    ZF_LOGD("Unable to locate a device region with the given name");
-    return NULL;
-}

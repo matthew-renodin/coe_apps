@@ -22,7 +22,42 @@
  * @file init.c
  * @brief Core implementation of libinit
  *
+ * A core goal of this library is to abstract away the root task details.
+ * One important part of this goal is setting up the allocators/bookkeeping. These
+ * allocator object operate at various layers with upper layers depending on lower
+ * layers.
+ *
+ * +------------------------------------+------------------------------------+
+ * | INTERFACE:                         | IMPLMENTATION:                     |
+ * +------------------------------------+------------------------------------+
+ * | vspace (virtual memory manager)    < sel4utils                          |
+ * +------------------------------------+------------------------------------+
+ * | vka (kernel object allocator)      < allocman                           |
+ * +------------------------------------+------------------------------------+
+ * 
+ * libinit gathers these bookkeeping objects/structs into one place: init_objects.
+ *
+ * The main resource/currency in dynamic sel4 systems is "untyped" memory objects.
+ * These objects represent unmapped physical memory that can be used for either
+ * making kernel objects or can be used as frames for virtual memory. This means 
+ * that allocman must be supplied with untyped memory objects that it can use.
+ *
+ * The root task gets all of the untyped memory objects at boot time; however,
+ * other processes that are chilren/ancestors of root task must be explicitly
+ * given untyped memory by their parent.
+ *
+ * +------------------------------+-----------------+
+ * | ROOT TASK:                   | ANCESTORS:      |
+ * +------------------------------+-----------------+
+ * | init_objects allocators (vka, vspace)          |
+ * +------------------------------+-----------------+
+ * | simple (abstraction of b.i.) | init_data       |
+ * +------------------------------+ (given untypeds |
+ * | bootinfo (list of untypeds)  | from parent)    |
+ * +------------------------------+-----------------+
+ * 
  */
+
 #include <autoconf.h>
 
 #include <stdint.h>
@@ -46,40 +81,11 @@
 #include <init/init.h>
 
 
-
-/* Internal bookeeping variables for a process
- * These object operate at various layers 
- * with upper layers depending on lower layers:
- *
- * ROOT TASK:
- * +------------------------------------+
- * | vspace (virtual memory manager)    |
- * +------------------------------------+
- * | vka (kernel object allocator)      |
- * +------------------------------------+
- * | allocman (untyped object manager)  |
- * +------------------------------------+
- * | simple (abstraction of bootinfo)   |  
- * +------------------------------------+
- * | bootinfo (list of untyped caps)    |
- * +------------------------------------+
- *
- * OTHER PROCESSES:
- * +------------------------------------+
- * | vspace (virtual memory manager)    |
- * +------------------------------------+
- * | vka (kernel object allocator)      |
- * +------------------------------------+
- * | allocman (untyped object manager)  |
- * +------------------------------------+
- * | caps to untyped objects            |
- * +------------------------------------+
- */
-
 /**
  * Global variable for the bookkeeping objects.
  */
 init_objects_t init_objects = {0};
+
 
 UNUSED static serial_objects_t serial_objects;
 
@@ -95,14 +101,12 @@ extern char *morecore_area;
 extern size_t morecore_size;
 
 
-
 /* In order for allocman to start bookkeeping it needs memory. 
  * This array is memory for it to bootstrap itself before untyped 
  * memory is accessable. After that it can allocate its own pages,
  * with a limit set by the dynamic pool size.
  */
 static uint8_t allocman_static_pool[CONFIG_LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES];
-static void *  allocman_dynamic_pool;
 
 /* Static memory to help bootstrap the virtual memory bookkeeping */
 static sel4utils_alloc_data_t vspace_bootstrap_data;
@@ -125,9 +129,9 @@ static void print_cpio_data(void) {
     extern char _cpio_archive[];
 
     printf("Parsing cpio data:\n");
-    printf("--------------------------------------------------------\n");
+    printf("+-------+------------------+------------+--------------+\n");
     printf("| index |        name      |  address   | size (bytes) |\n");
-    printf("|------------------------------------------------------|\n");
+    printf("+-------+------------------+------------+--------------+\n");
     for(int i = 0;; i++) {
         unsigned long size;
         const char *name;
@@ -140,7 +144,106 @@ static void print_cpio_data(void) {
             break;
         }
     }
-    printf("--------------------------------------------------------\n");
+    printf("+------------------------------------------------------+\n");
+}
+
+
+/**
+ * Allocman needs a static array/pool to bootstrap itself and the system.
+ * We can give it a second, larger unmapped pool/space.
+ *
+ * Allocman will lazily map pages into this reserved space when it needs
+ * space for bookkeeping.
+ */
+static int setup_allocman_dual_pool(seL4_Word pool_size) {
+    reservation_t reservation;
+    void * allocman_dynamic_pool;
+
+    /*
+     * Reserve a new big space for allocman using vspace.
+     */
+    reservation = vspace_reserve_range(&init_objects.vspace,
+                                       pool_size,
+                                       seL4_AllRights,
+                                       1, /* Cacheable */
+                                       &allocman_dynamic_pool);
+    if(reservation.res == NULL) {
+        ZF_LOGW("Failed to reserve a chunk of memory for allocman");
+        return -1;
+    }
+
+    /*
+     * Use the newly reserved space as bookkeeping space for allocman.
+     */
+    bootstrap_configure_virtual_pool(init_objects.allocman, 
+                                     allocman_dynamic_pool,
+                                     pool_size,
+                                     init_objects.page_dir_cap);
+    return 0;
+}
+
+/**
+ * The root task is by default mapped in with all pages set to RWX.
+ * This function remaps these pages to be either code (RX) or data (RW).
+ */
+static int remap_root_task_elf_regions() {
+    int error;
+#ifdef CONFIG_ARCH_ARM
+    extern char __executable_start[];
+    extern char _etext[];
+    extern char _edata[];
+    extern char _end[];
+
+    ZF_LOGD("Remapping root task image... start:%p, etext:%p, edata:%p, end:%p",
+            __executable_start,
+            _etext,
+            _edata,
+            _end);
+
+    int num_image_caps = simple_get_userimage_count(&init_objects.simple);
+    seL4_CPtr page_dir = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+
+    /**
+     * We have to assume here that the image is contiguous in both physical and 
+     * virtual memory. This is pretty brittle, but the only way at the moment.
+     */
+    uintptr_t phys_start = seL4_ARM_Page_GetAddress(simple_get_nth_userimage(
+                                                                        &init_objects.simple,
+                                                                        0)).paddr;
+    ptrdiff_t offset = (uintptr_t)__executable_start - phys_start;
+
+    for(int i = 0; i < num_image_caps; i++) {
+        seL4_CPtr image_frame = simple_get_nth_userimage(&init_objects.simple, i);
+        uintptr_t paddr = seL4_ARM_Page_GetAddress(image_frame).paddr;
+        uintptr_t vaddr = paddr + offset;
+
+        if(vaddr >= ROUND_DOWN((uintptr_t)__executable_start, PAGE_SIZE_4K) &&
+           vaddr < ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K))
+        {
+            error = seL4_ARCH_Page_Remap(image_frame,
+                                         page_dir,
+                                         seL4_CanRead,
+                                         seL4_ARCH_Default_VMAttributes);
+            if(error) {
+                ZF_LOGE("Failed to remap text page");
+                return -1;
+            }
+        } else if(vaddr >= ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K) &&
+                  vaddr < ROUND_UP((uintptr_t)_end, PAGE_SIZE_4K))
+        {
+            error = seL4_ARCH_Page_Remap(image_frame,
+                                         page_dir,
+                                         seL4_ReadWrite,
+                                         seL4_ARCH_Default_VMAttributes | seL4_ARM_ExecuteNever);
+            if(error) {
+                ZF_LOGE("Failed to remap text page");
+                return -2;
+            }
+
+        }
+    }
+#endif
+    return 0;
 }
 
 
@@ -150,15 +253,23 @@ int init_process(void) {
     static int run_once = 0;
 
     if(run_once) {
-        ZF_LOGF("This function may only be called once");
+        ZF_LOGE("This function may only be called once");
+        return -1;
     }
     run_once = 1;
+
+    if(init_objects.initialized) {
+        ZF_LOGE("Init objects have already been initialized.");
+        return -2;
+    }
     
     /**
      * Information about the init_data and heap are passed as environment variables
      */
     morecore_area = (void*)strtol(getenv("HEAP_ADDR"), NULL, 16);
     morecore_size = atoi(getenv("HEAP_SIZE"));
+    
+    /* Malloc is available now */
 
     void *init_data_packed = (void*)strtol(getenv("INIT_DATA_ADDR"), NULL, 16);
     seL4_Word init_data_packed_size = atoi(getenv("INIT_DATA_SIZE"));
@@ -168,7 +279,6 @@ int init_process(void) {
     ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
     ZF_LOGD("env: INIT_DATA_SIZE=%lu", init_data_packed_size);
 
-    memset(&init_objects, 0, sizeof(init_objects));
     /**
      * Unpack the init data from our parent process.
      */
@@ -176,12 +286,16 @@ int init_process(void) {
                                                init_data_packed_size,
                                                init_data_packed);
     
+    /**
+     * Setup the root_task/ancestor abstraction
+     */
     init_objects.cnode_cap = INIT_CHILD_CNODE_SLOT;
     init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
     init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
     init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
     init_objects.sync_notification_cap = INIT_CHILD_SYNC_NOTIFICATION_SLOT;
     init_objects.proc_name = init_objects.init_data->proc_name;
+    init_objects.initialized = 1;
 
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(INIT_CHILD_TCB_SLOT, init_objects.proc_name);
@@ -190,20 +304,23 @@ int init_process(void) {
     zf_log_set_tag_prefix(init_objects.proc_name);
     ZF_LOGD("Starting up process: %s.", init_objects.proc_name);
 
-
     /**
-     * Setup allocman and vka bookkeeping objects
-     * We are giving allocman a static array of memory to get started.
+     * Setup allocman. We are giving allocman a static array of memory to get
+     * started with it's bookkeeping of untyped/other objects
      */
     init_objects.allocman = bootstrap_use_current_1level(
-                                                  INIT_CHILD_CNODE_SLOT,
+                                                  init_objects.cnode_cap,
                                                   init_objects.init_data->cnode_size_bits,
                                                   init_objects.init_data->cnode_next_free,
-                                                  (1u << init_objects.init_data->cnode_size_bits),
+                                                  BIT(init_objects.init_data->cnode_size_bits),
                                                   CONFIG_LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES,
                                                   allocman_static_pool);
     ZF_LOGF_IF(init_objects.allocman == NULL, "Failed to bootstrap allocman.");
 
+    /**
+     * Build the vka interface to our allocman.
+     * Sets up function pointers.
+     */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
     /**
@@ -235,7 +352,6 @@ int init_process(void) {
             total_ut_count,
             total_ut_memory / 1024);
 
-
     /**
      * Setup an existing frames list.
      */
@@ -260,11 +376,14 @@ int init_process(void) {
     shmem_iter = init_objects.init_data->shmem_list_head;
     devmem_iter = init_objects.init_data->devmem_list_head;
 
-    /* Allocate an extra space for the null terminator */
+    /**
+     * Allocate an array to hold existing frame addresses.
+     * sel4utils expects a null terminated list, so +1
+     */
     void **existing_frames = calloc((num_frames + 1), sizeof(void *));
     if(existing_frames == NULL) {
         ZF_LOGE("Failed to get memory for existing frames buffer");
-        return -1;
+        return -3;
     }
 
     /**
@@ -272,39 +391,41 @@ int init_process(void) {
      */
     j = 0;
     for(i = 0; i < init_data_pages; i++, j++) {
-        existing_frames[j] = (void*)(init_data_packed + (i << PAGE_BITS_4K));
+        existing_frames[j] = (void*)((uintptr_t)init_data_packed + (i << PAGE_BITS_4K));
     }
     for(i = 0; i < morecore_size / PAGE_SIZE_4K; i++, j++) {
-        existing_frames[j] = (void*)(morecore_area + (i << PAGE_BITS_4K));
+        existing_frames[j] = (void*)((uintptr_t)morecore_area + (i << PAGE_BITS_4K));
     }
     for(i = 0; i < init_objects.init_data->stack_size_pages; i++, j++) {
         /**
          * This stack_vaddr points to the top of the stack so we have to subtract.
          * I am unsure if this works in the edge cases. TODO test.
          */
-        existing_frames[j] = init_objects.init_data->stack_vaddr - (i << PAGE_BITS_4K);
+        existing_frames[j] = (void*)((uintptr_t)init_objects.init_data->stack_vaddr -
+                                                (i << PAGE_BITS_4K));
     }
 
     while(shmem_iter != NULL) {
         ZF_LOGW_IF(shmem_iter->length_bytes%PAGE_SIZE_4K != 0, "Invalid length of shmem");
 
         for(i = 0; i < (shmem_iter->length_bytes/PAGE_SIZE_4K); i++, j++) {
-            existing_frames[j] = shmem_iter->addr + (i << PAGE_BITS_4K);
+            existing_frames[j] = (void*)((uintptr_t)shmem_iter->addr + (i << PAGE_BITS_4K));
         }
         shmem_iter = shmem_iter->next;
     } 
     while(devmem_iter != NULL) {
         for(i = 0; i < devmem_iter->num_pages; i++, j++) {
-            existing_frames[j] = devmem_iter->virt_addr + (i << devmem_iter->size_bits);
+            existing_frames[j] = (void*)((uintptr_t)devmem_iter->virt_addr +
+                                                    (i << devmem_iter->size_bits));
         }
         devmem_iter = devmem_iter->next;
     }
-    existing_frames[j++] = seL4_GetIPCBuffer();
+    existing_frames[j++] = (void *)seL4_GetIPCBuffer();
 
     ZF_LOGW_IF(j != num_frames, "Not all of the existing frames were copied.");
 
     /**
-     * Setup vspace object
+     * Setup vspace object.
      */
     error = sel4utils_bootstrap_vspace(&init_objects.vspace,
                                        &vspace_bootstrap_data,
@@ -313,48 +434,39 @@ int init_process(void) {
                                        NULL,
                                        NULL,
                                        (void**)existing_frames);
+    free(existing_frames);
     if(error) {
         ZF_LOGE("Failed to setup vspace object");
-        return -2;
+        return -4;
     }
 
-
     /**
-     * If we have untypeds we can reserve space for bookkeeping.
+     * At this point all the objects are initialized.
+     *
+     * If we have enough untypeds we can try to reserve extra space for bookkeeping.
      */
-    if(init_objects.init_data->untyped_list_head != NULL) {
-        /* At this point all the objects are initialized, but we want to give 
-         * allocman more memory for bookkeeping, so we will reserve some memory for it.
-         * It will do the actual allocation.
-         */
-    
-        reservation_t reservation;
-    
-        /* Reserve a new big space for using vspace. */
-        reservation = vspace_reserve_range(&init_objects.vspace,
-                                           CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
-                                           seL4_AllRights,
-                                           1, /* Cacheable */
-                                           &allocman_dynamic_pool);
-        ZF_LOGF_IF(reservation.res == NULL, "Failed to reserve a chunk of memory range");
-        
-        /* Use the newly reserved space as bookkeeping space for allocman. */
-        bootstrap_configure_virtual_pool(init_objects.allocman, 
-                                         allocman_dynamic_pool,
-                                         CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
-                                         init_objects.page_dir_cap);
+    if(total_ut_memory > CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES) {
+
+        error = setup_allocman_dual_pool(CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES);
+        if(error) {
+            ZF_LOGE("Failed to set dual pool."
+                    "Make sure you have enough size for the allocman static pool.");
+        }
+
+    } else if(total_ut_memory > 0) {
+        ZF_LOGW("Warning: We have some untyped memory, but not enough to make a second pool"
+                "for allocman. You may run out of bookkeeping space and fail to allocate"
+                "objects in the future.");
     }
 
     error = init_set_thread_local_storage(NULL);
     if(error) {
         ZF_LOGE("Failed to set thread local storage");
-        return -3;
+        return -5;
     }
 
-    init_objects.initialized = 1;
     return 0;
 }
-
 
 
 
@@ -364,86 +476,56 @@ int init_root_task(void) {
     static int run_once = 0;
 
     if(run_once) {
-        ZF_LOGF("This function may only be called once");    
+        ZF_LOGE("This function may only be called once");
+        return -1;
     }
     run_once = 1;
 
-    zf_log_set_tag_prefix("root_task:");
+    if(init_objects.initialized) {
+        ZF_LOGE("Init objects have already been initialized.");
+        return -2;
+    }
 
-    memset(&init_objects, 0, sizeof(init_objects));
 
     init_objects.proc_name = "root_task";
+
+    zf_log_set_tag_prefix(init_objects.proc_name);
+
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(seL4_CapInitThreadTCB, init_objects.proc_name);
 #endif
 
     init_objects.info = platsupport_get_bootinfo();
-    ZF_LOGF_IF(init_objects.info == NULL, "Failed to get bootinfo.");
+    if(init_objects.info == NULL) {
+        ZF_LOGE("Failed to get bootinfo.");
+        return -3;
+    }
 
     /* Initialize the simple structure's function pointers,
      * Simple manages our bootinfo struct for us. */
     simple_default_init_bootinfo(&init_objects.simple, init_objects.info);
 
+    /* Create the bootinfo abstraction layer */
+    init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
+    init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
+    init_objects.tcb_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadTCB);
+    init_objects.cnode_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadCNode);
+    init_objects.page_dir_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+    init_objects.fault_cap = seL4_CapNull;
+
+
+    init_objects.initialized = 1;
     /**
      * Remap the root task code and data sections to patch the executable permissions.
      */
-#ifdef CONFIG_ARCH_ARM
-    extern char __executable_start[];
-    extern char _etext[];
-    extern char _edata[];
-    extern char _end[];
-
-    ZF_LOGD("Remapping root task image... start:%p, etext:%p, edata:%p, end:%p",
-            __executable_start,
-            _etext,
-            _edata,
-            _end);
-
-    int num_image_caps = simple_get_userimage_count(&init_objects.simple);
-    seL4_CPtr page_dir = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+    error = remap_root_task_elf_regions();
+    if(error) {
+        ZF_LOGE("Failed to remap elf regions to correct RWX perms");
+        return -4; /* TODO: Should we just continue? */
+    }
 
     /**
-     * We have to assume here that the image is contiguous in both physical and 
-     * virtual memory. This is pretty brittle, but the only way at the moment.
-     */
-    void* phys_start = seL4_ARM_Page_GetAddress(simple_get_nth_userimage(&init_objects.simple,
-                                                                         0)).paddr;
-    ptrdiff_t offset = (uintptr_t)__executable_start - (uintptr_t)phys_start;
-
-    for(int i = 0; i < num_image_caps; i++) {
-        seL4_CPtr image_frame = simple_get_nth_userimage(&init_objects.simple, i);
-        void *paddr = seL4_ARM_Page_GetAddress(image_frame).paddr;
-        void *vaddr = (void*)((uintptr_t)paddr + offset);
-
-        if(vaddr >= ROUND_DOWN((uintptr_t)__executable_start, PAGE_SIZE_4K) &&
-           vaddr < ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K))
-        {
-            error = seL4_ARCH_Page_Remap(image_frame,
-                                         page_dir,
-                                         seL4_CanRead,
-                                         seL4_ARCH_Default_VMAttributes);
-            if(error) {
-                ZF_LOGE("Failed to remap text page");
-                return -1;
-            }
-        } else if(vaddr >= ROUND_UP((uintptr_t)_etext, PAGE_SIZE_4K) &&
-                  vaddr < ROUND_UP((uintptr_t)_end, PAGE_SIZE_4K))
-        {
-            error = seL4_ARCH_Page_Remap(image_frame,
-                                         page_dir,
-                                         seL4_ReadWrite,
-                                         seL4_ARCH_Default_VMAttributes | seL4_ARM_ExecuteNever);
-            if(error) {
-                ZF_LOGE("Failed to remap text page");
-                return -1;
-            }
-
-        }
-    }
-#endif
-
-    
-    /* Setup allocman with a static pool to bootstrap its bookkeeping.
+     * Setup allocman with a static pool to bootstrap its bookkeeping.
      * Since we are providing it our simple struct it will fill itself
      * with untyped memory chunks from the bootinfo.
      */
@@ -451,10 +533,15 @@ int init_root_task(void) {
                                             &init_objects.simple, 
                                             CONFIG_LIB_INIT_ALLOCMAN_STATIC_POOL_BYTES,
                                             allocman_static_pool);
-    ZF_LOGF_IF(init_objects.allocman == NULL, "Failed to bootstrap allocman.");
+    if(init_objects.allocman == NULL) {
+        ZF_LOGE("Failed to bootstrap allocman.");
+        return -5;
+    }
 
-    /* Initialize the vka object's function pointers.
-     * The vka is now backed by the untyped memory in allocman. */
+    /**
+     * Build the vka interface to our allocman.
+     * Sets up function pointers.
+     */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
     /* 
@@ -462,10 +549,13 @@ int init_root_task(void) {
      */
     error = sel4utils_bootstrap_vspace_with_bootinfo_leaky(&init_objects.vspace, 
                                                            &vspace_bootstrap_data,
-                                                           simple_get_pd(&init_objects.simple),
+                                                           init_objects.page_dir_cap,
                                                            &init_objects.vka,
                                                            init_objects.info);
-    ZF_LOGF_IF(error, "Failed to bootstrap vspace");
+    if(error) {
+        ZF_LOGE("Failed to bootstrap vspace");
+        return -6;
+    }
 
     /**
      * Setup malloc to refill from our new allocators.
@@ -479,11 +569,11 @@ int init_root_task(void) {
                                              &muslc_brk_reservation_start);
     if(error) {
         ZF_LOGE("Failed to reserve range for heap");
-        return -3;
+        return -7;
     }
     muslc_brk_reservation.res = &heap_res;
     muslc_this_vspace = &init_objects.vspace;
-    muslc_vspace_root_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
+    muslc_vspace_root_cap = init_objects.page_dir_cap;
 
     /* Malloc is available now */
 
@@ -492,24 +582,12 @@ int init_root_task(void) {
      * allocman more memory for bookkeeping, so we will dynamically allocate
      * some memory for it.
      */
-
-    reservation_t reservation;
-
-    /* Dynamically allocate a new big array/pool of memory using vspace (backed by vka). */
-    reservation = vspace_reserve_range(&init_objects.vspace,
-                                       CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
-                                       seL4_AllRights,
-                                       1, /* Cacheable */
-                                       &allocman_dynamic_pool);
-    ZF_LOGF_IF(reservation.res == NULL, "Failed to allocate a chunk of memory range");
-    
-
-    /* Use the newly allocated pool as bookkeeping space for allocman. */
-    bootstrap_configure_virtual_pool(init_objects.allocman, 
-                                     allocman_dynamic_pool,
-                                     CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES,
-                                     simple_get_pd(&init_objects.simple));
-
+    error = setup_allocman_dual_pool(CONFIG_LIB_INIT_ALLOCMAN_DYNAMIC_POOL_BYTES);
+    if(error) {
+        ZF_LOGE("Failed to set dual pool."
+                "Make sure you have enough size for the allocman static pool.");
+        return -8;
+    }
 
 
     /* All the allocator layers are now configured. 
@@ -538,24 +616,15 @@ int init_root_task(void) {
     error = vka_alloc_notification(&init_objects.vka, &sync_notification);
     if(error) {
         ZF_LOGE("Failed to allocate notification object.");
-        return error;
+        return -9;
     }
-
-    /* Create the bootinfo abstraction layer */
-    init_objects.asid_control_cap = simple_get_init_cap(&init_objects.simple, seL4_CapASIDControl);
-    init_objects.asid_pool_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadASIDPool);
-    init_objects.tcb_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadTCB);
-    init_objects.cnode_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadCNode);
-    init_objects.page_dir_cap = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
-    init_objects.fault_cap = seL4_CapNull;
     init_objects.sync_notification_cap = sync_notification.cptr;
 
-    init_objects.initialized = 1;
 
     error = init_set_thread_local_storage(NULL);
     if(error) {
         ZF_LOGE("Failed to set thread local storage");
-        return -3;
+        return -10;
     }
 
     return 0;

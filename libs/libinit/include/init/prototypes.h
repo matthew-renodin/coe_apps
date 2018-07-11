@@ -26,6 +26,10 @@
 
 #pragma once
 
+#include <sel4/sel4.h>
+
+#include "types.h"
+
 /**
  * @brief Initializes the necessary userspace bookeeping for a single process.
  */
@@ -50,7 +54,7 @@ seL4_CPtr init_get_fault_ep();
  *
  * @return Capability slot of the requested ep.
  */
-seL4_CPtr init_lookup_ep(const char *);
+seL4_CPtr init_lookup_endpoint(const char *);
 
 
 /**
@@ -73,14 +77,16 @@ void *init_get_thread_local_storage(void);
 
 
 /**
- * @brief Lookup an IRQ notification ep that was given to us with a string name.
+ * @brief Lookup an IRQ hat was given to us with a string name.
  *
  * This searches the init data for IRQs that our parent process gave to us.
  * Don't use this in the root task.
  *
- * @return Capability to the notification ep.
+ * @return Struct with two caps, one for the ep cap, one for the irq cap.
+ *
+ * TODO: If this struct was larger passing a pointer might be better.
  */
-seL4_CPtr init_lookup_irq(const char *);
+init_irq_caps_t init_lookup_irq(const char *);
 
 
 /**
@@ -94,13 +100,4 @@ seL4_CPtr init_lookup_irq(const char *);
 void * init_lookup_device_addr(const char *);
 
 
-
-
-
-
-
-/* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
-
-//  init_list_devices(...)
-//  init_list_connections(...)
 

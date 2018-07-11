@@ -14,6 +14,15 @@
 #include "init_data.pb-c.h"
 
 /**
+ * @brief the return value of irq lookups.
+ */
+typedef struct init_irq_caps {
+    seL4_CPtr ep;
+    seL4_CPtr irq;
+} init_irq_caps_t;
+
+
+/**
  * @brief Bookkeeping objects/managers/allocators
  *
  * @warning Remeber that these objects are not thread safe. This struct is a 

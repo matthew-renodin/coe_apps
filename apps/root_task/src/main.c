@@ -63,10 +63,10 @@ UNUSED static void fancy_hello_world() {
  */
 int main(void) {
     int err;
-    init_root_task();
-
     process_handle_t child1, child2;
 
+    err = init_root_task();
+    ZF_LOGF_IF(err, "Failed to init");
 
     /**
      * Create two new processes

@@ -48,7 +48,7 @@ void * worker_thread(void *cookie) {
 
     printf("Worker thread id %lu\n", (long unsigned)thread_get_id());
 
-    seL4_CPtr ep_cap = init_lookup_ep(ep_name);
+    seL4_CPtr ep_cap = init_lookup_endpoint(ep_name);
 
     char *shmem[2];
     shmem[0] = init_lookup_shmem("echo1-shmem");
@@ -67,7 +67,7 @@ void * worker_thread(void *cookie) {
         seL4_Wait(notifs[1], NULL);
         printf("Got a message from #2: %s\n", shmem[1]);
 
-        seL4_Send(init_lookup_ep("parent"), seL4_MessageInfo_new(66,0,0,0));
+        seL4_Send(init_lookup_endpoint("parent"), seL4_MessageInfo_new(66,0,0,0));
 
     } else {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
