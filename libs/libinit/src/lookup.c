@@ -10,8 +10,6 @@
 #include <sel4/sel4.h>
 #include <init/init.h>
 
-
-
 #define LOOKUP(RET, SUFFIX, TYPE, LIST, FIELD)                                  \
     RET init_lookup_##SUFFIX(const char * name)                                 \
     {                                                                           \
@@ -36,7 +34,7 @@ LOOKUP(void*,       device_addr,    DeviceMemoryData,   devmem_list_head,       
 
 init_irq_caps_t init_lookup_irq(const char * name)
 {
-    if(!init_objects.initialized || !init_objects.init_data) {
+    if(!init_check_initialized() || !init_objects.init_data) {
         ZF_LOGE("Invalid usage of init library");
         return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
     }
@@ -56,7 +54,3 @@ init_irq_caps_t init_lookup_irq(const char * name)
     ZF_LOGD("Unable to locate init data with the given name");
     return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
 }
-
-
-
-

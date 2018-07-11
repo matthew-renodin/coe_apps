@@ -1,9 +1,9 @@
 ###############################################################################
-# libprocess - Kbuild
+# liblockvka - Kbuild
 #
 #
 ###############################################################################
 
-libs-$(CONFIG_LIB_PROCESS) += libprocess
-libprocess: libsel4 common $(libc) libthread libinit liblockvka libmmap
+libs-$(CONFIG_LIB_LOCKVKA) += liblockvka 
+liblockvka: libsel4 common $(libc) libsel4vka libsel4allocman libsel4sync
 

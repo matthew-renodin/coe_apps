@@ -32,3 +32,11 @@
 #include <init/globals.h>
 #include <init/layouts.h>
 #include "init_data.pb-c.h"
+
+/**
+ * @brief Atomically checks for initialization of the init objects
+ */
+static inline bool
+init_check_initialized(void) {
+    return __atomic_load_n(&init_objects.initialized, __ATOMIC_SEQ_CST) ? true : false;
+}

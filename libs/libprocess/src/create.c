@@ -32,7 +32,7 @@ int process_create(const char *elf_file_name,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -74,6 +74,18 @@ int process_create(const char *elf_file_name,
     error = vka_alloc_vspace_root(&init_objects.vka, &handle->page_dir);
     if(error) {
         ZF_LOGE("Failed to allocate a page dir.");
+        return error;
+    }
+
+    error = vka_alloc_notification(&init_objects.vka, &handle->vka_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate a notification.");
+        return error;
+    }
+
+    error = vka_alloc_notification(&init_objects.vka, &handle->init_data_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate a notification.");
         return error;
     }
 
@@ -205,6 +217,22 @@ int process_create(const char *elf_file_name,
 
     dst.capPtr = INIT_CHILD_TCB_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->main_thread->tcb.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) {
+        ZF_LOGE("Failed to copy cap into child cnode.");
+        return error;
+    }
+
+    dst.capPtr = INIT_CHILD_VKA_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->vka_lock_notification.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) {
+        ZF_LOGE("Failed to copy cap into child cnode.");
+        return error;
+    }
+    
+    dst.capPtr = INIT_CHILD_INIT_OBJECTS_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->init_data_lock_notification.cptr, &src);
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");

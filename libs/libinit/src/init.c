@@ -323,6 +323,10 @@ int init_process(void) {
      */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
+    /* Surround Allocman with LockVKA */
+    sync_mutex_init(&init_objects.vka_lock, INIT_CHILD_VKA_LOCK_SLOT);
+    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
+
     /**
      * Parse untypeds
      */
@@ -608,6 +612,26 @@ int init_root_task(void) {
 
     print_cpio_data();
 
+    /* Surround Allocman VKA with LOCKVKA */
+    
+    vka_object_t vka_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &vka_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
+    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
+    
+    /**
+     * Setup a notification for init lock to use
+     */
+    vka_object_t init_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &init_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
 
     /**
      * Setup a notification for libsync to use.

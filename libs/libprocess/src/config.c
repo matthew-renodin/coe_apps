@@ -244,7 +244,7 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
     int error, i;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -365,7 +365,7 @@ int process_add_device_irq(process_handle_t *handle,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -453,8 +453,6 @@ int process_add_device_irq(process_handle_t *handle,
     return 0;
 }
 
-
-
 int process_give_untyped_resources(process_handle_t *handle,
                                    seL4_Word size_bits,
                                    seL4_Word num_objects)
@@ -462,7 +460,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -534,7 +532,7 @@ int process_connect_many_to_self_endpoint(process_handle_t **handle_list,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -569,7 +567,7 @@ int process_connect_many_to_endpoint(process_handle_t **handle_list,
     seL4_CPtr self_cap;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -651,7 +649,7 @@ int process_connect_many_to_self_notification(process_handle_t **handle_list,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -684,7 +682,7 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
     seL4_CPtr self_cap;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -764,7 +762,7 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
     UNUSED int error, i, j;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;

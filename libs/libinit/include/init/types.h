@@ -9,6 +9,10 @@
 #include <allocman/allocman.h>
 #include <vka/vka.h>
 #include <vspace/vspace.h>
+#include <sync/mutex.h>
+#include <sync/recursive_mutex.h>
+
+#include <lockvka/lockvka.h>
 
 #include <init/init.h>
 #include "init_data.pb-c.h"
@@ -29,7 +33,7 @@ typedef struct init_irq_caps {
  * critical resource which must be protected with the lock.
  */
 typedef struct init_objects {
-    int lock;
+    sync_recursive_mutex_t init_lock;
 
     int initialized;
 
@@ -38,6 +42,9 @@ typedef struct init_objects {
     allocman_t *allocman;
     simple_t simple;
     seL4_BootInfo *info;
+
+    sync_mutex_t vka_lock;
+    lockvka_t lockvka;
 
     /* We can abstract away from boot info here */
     seL4_CPtr cnode_cap;

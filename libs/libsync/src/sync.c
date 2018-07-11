@@ -38,12 +38,20 @@ int mutex_create(mutex_t *mutex, lock_type_t type) {
         return mutex_fast_recursive_init(mutex);
 
     case LOCK_NOTIFICATION:
+        if(!init_check_initialized()) {
+            ZF_LOGE("Init data must be initialized");
+            return LOCK_ERROR;
+        }
         mutex_set_type(mutex, LOCK_NOTIFICATION);
         __atomic_store_n(&(mutex->can_destroy), true, __ATOMIC_SEQ_CST);
         status = sync_mutex_new(&init_objects.vka, &(mutex->notification_lock));
         return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
 
     case LOCK_NOTIFICATION_RECURSIVE:
+        if(!init_check_initialized()) {
+            ZF_LOGE("Init data must be initialized");
+            return LOCK_ERROR;
+        }
         mutex_set_type(mutex, LOCK_NOTIFICATION_RECURSIVE);
         __atomic_store_n(&(mutex->can_destroy), true, __ATOMIC_SEQ_CST);
         status = sync_recursive_mutex_new(&init_objects.vka, &(mutex->notification_recursive_lock));

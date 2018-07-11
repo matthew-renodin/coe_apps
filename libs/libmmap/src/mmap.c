@@ -87,7 +87,7 @@ int mmap_new_stack_custom(vspace_t *vspace,
     int error;
 
     /* TODO: implement libsync */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                "Run init_process or init_root_task to setup.");
        return -1;
@@ -180,7 +180,7 @@ static int mmap_device_pages_custom(vspace_t *vspace,
     int error;
 
     /* TODO: implement libsync */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                "Run init_process or init_root_task to setup.");
        return -1;
