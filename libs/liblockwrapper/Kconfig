@@ -1,11 +1,11 @@
 ###############################################################################
-# liblockvka - Kconfig
+# liblockwrapper - Kconfig
 #
 #
 ###############################################################################
 
-config LIB_LOCKVKA
-    bool "liblockvka"
+config LIB_LOCK_WRAPPER
+    bool "liblockwrapper"
     depends on HAVE_LIB_SEL4 && HAVE_LIBC
     select HAVE_SEL4_LIBS
     default y

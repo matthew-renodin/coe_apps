@@ -1,9 +1,9 @@
 ###############################################################################
-# liblockvka - Kbuild
+# liblockwrapper - Kbuild
 #
 #
 ###############################################################################
 
-libs-$(CONFIG_LIB_LOCKVKA) += liblockvka 
-liblockvka: libsel4 common $(libc) libsel4vka libsel4allocman libsel4sync
+libs-$(CONFIG_LIB_LOCK_WRAPPER) += liblockwrapper 
+liblockwrapper: libsel4 common $(libc) libsel4vka libsel4allocman libsel4sync
 

@@ -10,7 +10,7 @@ root_task-y = common libsel4 libmuslc libsel4muslcsys libsel4simple \
               libsel4vka libsel4allocman libsel4platsupport libutils \
               libsel4simple-default libsel4utils libsel4debug libsel4vspace \
               libelf libcpio \
-              libprocess libthread libsync libinit libmmap libsel4sync liblockvka
+              libprocess libthread libsync libinit libmmap libsel4sync liblockwrapper
 
 root_task-components-y += child_example
 root_task-components = $(addprefix $(STAGE_BASE)/bin/, $(root_task-components-y))
