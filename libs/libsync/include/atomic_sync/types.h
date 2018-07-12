@@ -38,11 +38,11 @@
 #define LOCK_SUCCESS 0
 #define LOCK_ERROR -1
 
-typedef struct userspace_lock {
+typedef struct userspace_spinlock {
     volatile int value;
 } ulock_t;
 
-typedef struct userspace_lock_recursive {
+typedef struct userspace_spinlock_recursive {
     volatile int value;
     volatile seL4_Word holder;
 } ulock_recursive_t;

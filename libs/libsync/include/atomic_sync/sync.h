@@ -27,5 +27,6 @@
 
 #include <atomic_sync/prototypes.h>
 #include <atomic_sync/types.h>
+#include <atomic_sync/interface.h>
 
 #include <platsupport/sync/atomic.h>

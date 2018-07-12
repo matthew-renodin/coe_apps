@@ -23,11 +23,11 @@
  * @brief Exported prototype definitions for libsync
  */
 
+#pragma once
+
 #include <sel4/sel4.h>
 #include <thread/thread.h>
 #include <atomic_sync/types.h>
-
-#pragma once
 
 #define atomic_compare_exchange(lock, expected, value) __atomic_compare_exchange_n((lock), expected, (value), 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)
 

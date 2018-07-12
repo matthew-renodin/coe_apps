@@ -21,7 +21,7 @@ ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLA
 ###############################################################################
 LIBS = c sel4 sel4muslcsys sel4vka sel4allocman sel4simple sel4simple-default \
        utils sel4utils sel4debug sel4vspace platsupport sel4platsupport cpio elf \
-       process thread sync init mmap
+       process thread sync sel4sync lockwrapper init mmap
 
 
 ###############################################################################

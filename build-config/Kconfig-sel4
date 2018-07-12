@@ -52,6 +52,7 @@ menu "seL4 Libraries"
     source "libs/libsync/Kconfig"
     source "libs/libinit/Kconfig"
     source "libs/libmmap/Kconfig"
+    source "libs/liblockwrapper/Kconfig"
 endmenu
 
 menu "Tools"

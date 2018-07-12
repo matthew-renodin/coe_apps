@@ -1,0 +1,13 @@
+###############################################################################
+# liblockwrapper - Kconfig
+#
+#
+###############################################################################
+
+config LIB_LOCK_WRAPPER
+    bool "liblockwrapper"
+    depends on HAVE_LIB_SEL4 && HAVE_LIBC
+    select HAVE_SEL4_LIBS
+    default y
+    help
+        A library to wrap unsafe vka with a lock to ensure thread safety.

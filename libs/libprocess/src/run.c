@@ -29,7 +29,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;

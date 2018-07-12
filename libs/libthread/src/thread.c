@@ -26,8 +26,8 @@ const thread_attr_t thread_1mb_high_priority = {
 thread_handle_t *thread_handle_create(const thread_attr_t *attr)
 {
     UNUSED int error;
-    /* TODO: implement sync */
-    if(!init_objects.initialized) {
+
+    if(!init_check_initialized()) {
         ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to setup.");
         return NULL;
@@ -201,7 +201,7 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     int error;
 
     /* TODO: implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to setup.");
         return NULL;
