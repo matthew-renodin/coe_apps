@@ -81,12 +81,10 @@ void *init_get_thread_local_storage(void);
  *
  * This searches the init data for IRQs that our parent process gave to us.
  * Don't use this in the root task.
- *
- * @return Struct with two caps, one for the ep cap, one for the irq cap.
- *
- * TODO: If this struct was larger passing a pointer might be better.
+ * 
+ * @return error code 
  */
-init_irq_caps_t init_lookup_irq(const char *);
+int init_lookup_irq(const char *, init_irq_info_t *);
 
 
 /**
@@ -97,7 +95,16 @@ init_irq_caps_t init_lookup_irq(const char *);
  *
  * @return A pointer to the shared memory region.
  */
-void * init_lookup_device_addr(const char *);
+void * init_lookup_devmem_addr(const char *);
 
 
+/**
+ * @brief Lookup a given device memory with a given string name
+ *
+ * This searches the init data for device mappings that our parent process gave to us.
+ * Don't use this in the root task.
+ *
+ * @return A pointer to the shared memory region.
+ */
+int init_lookup_devmem_info(const char *, init_devmem_info_t *);
 

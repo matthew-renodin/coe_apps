@@ -58,6 +58,18 @@ UNUSED static void fancy_hello_world() {
 }
 
 
+UNUSED static void *vka_abuser(void* arg) {
+    while(1) {
+        vka_object_t ob;
+        int error = vka_alloc_endpoint(&init_objects.vka, &ob);
+        ZF_LOGF_IF(error, "Failed to alloc ep");
+        vka_free_object(&init_objects.vka, &ob);
+    }
+    return NULL;
+}
+
+
+
 /**
  * Demo entry point after kernel boots.
  */
@@ -179,7 +191,22 @@ int main(void) {
 
     seL4_Wait(child2_ep, NULL); 
     printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
-    
+
+    /**
+     * Try to crash
+     */
+//    thread_handle_t *vka_abuser_1 = thread_handle_create(&thread_1mb_high_priority);
+//    ZF_LOGF_IF(vka_abuser_1 == NULL, "Failed to create thread");
+//
+//    thread_handle_t *vka_abuser_2 = thread_handle_create(&thread_1mb_high_priority);
+//    ZF_LOGF_IF(vka_abuser_2 == NULL, "Failed to create thread");
+//    
+//    err = thread_start(vka_abuser_1, vka_abuser, NULL);
+//    ZF_LOGF_IF(err, "Failed to create thread");
+//
+//    err = thread_start(vka_abuser_2, vka_abuser, NULL);
+//    ZF_LOGF_IF(err, "Failed to create thread");
+
     return 0;
 }
 

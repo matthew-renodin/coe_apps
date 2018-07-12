@@ -108,8 +108,6 @@ int main(int argc, char **argv) {
 
     printf("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
     
-    while(1);
-
     return 0;
 }
 

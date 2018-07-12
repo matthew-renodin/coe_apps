@@ -32,13 +32,18 @@
 LOOKUP(seL4_CPtr,   endpoint,       EndpointData,       ep_list_head,           cap);
 LOOKUP(seL4_CPtr,   notification,   EndpointData,       notification_list_head, cap);
 LOOKUP(void*,       shmem,          SharedMemoryData,   shmem_list_head,        addr);
-LOOKUP(void*,       device_addr,    DeviceMemoryData,   devmem_list_head,       virt_addr);
+LOOKUP(void*,       devmem_addr,    DeviceMemoryData,   devmem_list_head,       virt_addr);
 
-init_irq_caps_t init_lookup_irq(const char * name)
+int init_lookup_irq(const char * name, init_irq_info_t *info)
 {
     if(!init_objects.initialized || !init_objects.init_data) {
         ZF_LOGE("Invalid usage of init library");
-        return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
+        return -1;
+    }
+
+    if(info == NULL) {
+        ZF_LOGE("NULL pointer to info struct passed");
+        return -2;
     }
 
     IrqData * iter = init_objects.init_data->irq_list_head;
@@ -46,17 +51,53 @@ init_irq_caps_t init_lookup_irq(const char * name)
 
     while(iter) {
         if(strcmp(name, iter->name) == 0) {
-            return (init_irq_caps_t) {
-                .ep = iter->ep_cap,
-                .irq = iter->irq_cap,
-            };
+             info->ep = iter->ep_cap;
+             info->irq = iter->irq_cap;
+             info->number = iter->number;
+            return 0;
         }
         iter = iter->next;
     }
     ZF_LOGD("Unable to locate init data with the given name");
-    return (init_irq_caps_t){.ep = seL4_CapNull, .irq = seL4_CapNull};
+    return -3;
 }
 
 
+int init_lookup_devmem_info(const char * name, init_devmem_info_t *info)
+{
+    if(!init_objects.initialized || !init_objects.init_data) {
+        ZF_LOGE("Invalid usage of init library");
+        return -1;
+    }
 
+    if(info == NULL) {
+        ZF_LOGE("NULL pointer to info struct passed");
+        return -2;
+    }
+
+    DeviceMemoryData * iter = init_objects.init_data->devmem_list_head;
+    ZF_LOGD_IF(iter == NULL, "No elements in list when looking up.");
+
+    while(iter) {
+        if(strcmp(name, iter->name) == 0) {
+            info->vaddr = (void*)iter->virt_addr;
+            info->paddr = (void*)iter->phys_addr;
+            info->size_bits = iter->size_bits;
+            info->num_pages = iter->num_pages;
+
+            if(iter->n_caps32 == iter->num_pages && sizeof(seL4_CPtr) == sizeof(uint32_t)) {
+                info->caps = (seL4_CPtr*)iter->caps32;
+            } else if(iter->n_caps64 == iter->num_pages && sizeof(seL4_CPtr) == sizeof(uint64_t)) {
+                info->caps = (seL4_CPtr*)iter->caps64;
+            } else {
+                info->caps = NULL;
+            }
+
+            return 0;
+        }
+        iter = iter->next;
+    }
+    ZF_LOGD("Unable to locate init data with the given name");
+    return -3;
+}
 

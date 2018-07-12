@@ -52,8 +52,9 @@ typedef int (copy_cap_to_proc_func_t)(process_handle_t *handle,
                                       seL4_CapRights_t perms,
                                       const char* conn_name);
 
+
 /**
- * Assumes that handle is valid and that you have all the locks necessarry
+ * Assumes you have error checked args
  */
 static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
                                          seL4_CPtr new_cap,
@@ -79,7 +80,7 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
 
 
 /**
- * This helper assumes you have grabbed all the locks
+ * Assumes you have error checked args
  */
 static int copy_ep_to_proc(process_handle_t *handle,
                            seL4_CPtr ep_cap,
@@ -88,7 +89,7 @@ static int copy_ep_to_proc(process_handle_t *handle,
 {
     EndpointData *ep_data = malloc(sizeof(EndpointData));
     if(ep_data == NULL) {
-        ZF_LOGE("Failed to allocate Endpoint Data");
+        ZF_LOGE("Failed to malloc Endpoint Data");
         return -1;
     }
 
@@ -109,7 +110,7 @@ static int copy_ep_to_proc(process_handle_t *handle,
 
 
 /**
- * This helper assumes you have grabbed all the locks
+ * Assumes you have error checked args
  */
 static int copy_notification_to_proc(process_handle_t *handle,
                                      seL4_CPtr ep_cap,
@@ -118,7 +119,7 @@ static int copy_notification_to_proc(process_handle_t *handle,
 {
     EndpointData *ep_data = malloc(sizeof(EndpointData));
     if(ep_data == NULL) {
-        ZF_LOGE("Failed to allocate Endpoint Data");
+        ZF_LOGE("Failed to malloc Endpoint Data");
         return -1;
     }
 
@@ -140,7 +141,7 @@ static int copy_notification_to_proc(process_handle_t *handle,
 
 
 /**
- * This helper assumes you have grabbed all the locks
+ * Assumes you have error checked args
  */
 static int copy_shmem_to_proc(process_handle_t *handle,
                               void *vaddr,
@@ -149,7 +150,7 @@ static int copy_shmem_to_proc(process_handle_t *handle,
 {
     SharedMemoryData *shmem_data = malloc(sizeof(SharedMemoryData));
     if(shmem_data == NULL) {
-        ZF_LOGE("Failed to allocate Endpoint Data");
+        ZF_LOGE("Failed to malloc Shmem Data");
         return -1;
     }
 
@@ -165,6 +166,95 @@ static int copy_shmem_to_proc(process_handle_t *handle,
     return 0;
 
 }
+
+
+/**
+ * Assumes you have error checked args
+ */
+static int copy_irq_to_proc(process_handle_t *handle,
+                            seL4_CPtr ep_cap,
+                            seL4_CPtr irq_cap,
+                            seL4_Word irq_number,
+                            const char *conn_name)
+{
+    IrqData *irq_data = malloc(sizeof(IrqData));
+    if(irq_data == NULL) {
+        ZF_LOGE("Failed to malloc Irq Data");
+        return -1;
+    }
+    irq_data__init(irq_data);
+
+    irq_data->name = (char *)conn_name; /* protobuf uses non const strings */
+    irq_data->irq_cap = copy_cap_into_next_slot(handle, irq_cap, seL4_AllRights);
+    irq_data->ep_cap = copy_cap_into_next_slot(handle, ep_cap, seL4_AllRights);
+    irq_data->number = irq_number;
+
+    /* Push onto irq list */
+    irq_data->next = handle->init_data.irq_list_head;
+    handle->init_data.irq_list_head = irq_data;
+
+    return 0;
+}
+
+/**
+ *
+ */
+static int copy_devmem_to_proc(process_handle_t *handle,
+                               void *vaddr,
+                               void *paddr,
+                               seL4_Word num_pages,
+                               seL4_Word page_bits,
+                               seL4_CPtr *caps,
+                               const char *device_name)
+{
+
+    DeviceMemoryData *devmem_data = malloc(sizeof(DeviceMemoryData));
+    if(devmem_data == NULL) {
+        ZF_LOGE("Failed to malloc device memory data");
+        return -1;
+    }
+    device_memory_data__init(devmem_data);
+
+    
+    devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
+    devmem_data->virt_addr = (seL4_Word)vaddr;
+    devmem_data->phys_addr = (seL4_Word)paddr; 
+    devmem_data->size_bits = page_bits;
+    devmem_data->num_pages = num_pages;
+
+    seL4_CPtr *new_caps = NULL;
+    if(caps != NULL) {
+        new_caps = malloc(sizeof(seL4_CPtr)*num_pages);
+        if(new_caps == NULL) {
+            ZF_LOGE("Failed to malloc new space for device caps");
+            return -9;
+        }
+
+        for(int i = 0; i < num_pages; i++) {
+            new_caps[i] = copy_cap_into_next_slot(handle, caps[i], seL4_AllRights); 
+        }
+
+        /**
+         * This check should get compiled out.
+         * This deals with the fact that protobuf requires explicit sizes
+         */
+        if(sizeof(seL4_CPtr) == sizeof(uint32_t)) { 
+            devmem_data->caps32 = (uint32_t*)new_caps;
+            devmem_data->n_caps32 = num_pages;
+        } else if(sizeof(seL4_CPtr) == sizeof(uint64_t)) {
+            devmem_data->caps64 = (uint64_t*)new_caps;
+            devmem_data->n_caps64 = num_pages;
+        }
+    }
+
+    /* Push onto init_data list */
+    devmem_data->next = handle->init_data.devmem_list_head;
+    handle->init_data.devmem_list_head = devmem_data;
+
+    return 0;
+}
+
+
 
 
 static void free_parent_cap(seL4_CPtr cap)
@@ -250,8 +340,13 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
         return -1;
     }
 
+    if(device_name == NULL) {
+        ZF_LOGE("Null device name passed");
+        return -3;
+    }
+
     if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
+        ZF_LOGE("Invalid process handle pointer passed.");
         return -2; /* TODO come up with error codes */
     }
 
@@ -286,45 +381,123 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
                                          &vaddr);
     if(error) {
         ZF_LOGE("Failed to map device");
+        free(caps);
         return -5;
     }
 
-    /**
-     * We need to copy each parent cap into the child's cnode (overwriting caps[])
-     * After this caps is filled with CPtrs relative to the childs cnode.
-     */
+
+    error = copy_devmem_to_proc(handle,
+                                vaddr,
+                                paddr,
+                                num_pages,
+                                page_bits,
+                                add_caps ? caps : NULL,
+                                device_name);
+    if(error) {
+        ZF_LOGE("Failed to copy device memory to child");
+        free(caps);
+        return -6;
+    }
+
     if(add_caps) {
         for(i = 0; i < num_pages; i++) {
-            seL4_CPtr tmp = caps[i];
-            caps[i] = copy_cap_into_next_slot(handle, caps[i], seL4_AllRights); 
-            free_parent_cap(tmp); /* We don't need our copy of this cap now */
+            free_parent_cap(caps[i]); /* We don't need our copy of this cap now */
         }
+    } else {
+        /* TODO: We need to track if we hold the only caps */
     }
-    
 
-    /**
-     * Setup the init data
-     */
-    DeviceMemoryData *devmem_data = malloc(sizeof(DeviceMemoryData));
-    device_memory_data__init(devmem_data);
-
-    devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
-    devmem_data->virt_addr = (seL4_Word)vaddr;
-    devmem_data->phys_addr = (seL4_Word)paddr; 
-    devmem_data->size_bits = page_bits;
-    devmem_data->num_pages = num_pages;
-    if(add_caps) {
-        devmem_data->caps = caps;
-        devmem_data->n_caps = num_pages;
-    }
-    /* Push onto init_data list */
-    devmem_data->next = handle->init_data.devmem_list_head;
-    handle->init_data.devmem_list_head = devmem_data;
+    free(caps);
 
     return 0;
 }
 
 
+
+static int process_map_my_device_pages_optional_caps(process_handle_t *handle, 
+                                                     const char *device_name,
+                                                     const char *new_device_name,
+                                                     bool add_caps)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(device_name == NULL || new_device_name == NULL) {
+        ZF_LOGE("Null device name passed");
+        return -2;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed.");
+        return -3; /* TODO come up with error codes */
+    }
+
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -4; /* TODO come up with error codes */
+    }
+
+    /**
+     * Lookup device info in parent's init data
+     */
+    init_devmem_info_t info;
+    error = init_lookup_devmem_info(device_name, &info);
+    if(error) {
+        ZF_LOGE("Failed to lookup device mem object");
+        return -6;
+    }
+
+    if(info.caps == NULL) {
+        ZF_LOGE("Failed to find caps for memory");
+        return -7;
+    }
+
+    mmap_entry_attr_t attrs = mmap_attr_4k_device;
+    attrs.page_size_bits = info.size_bits;
+
+    void * vaddr;
+
+    error = mmap_existing_pages_custom(&handle->vspace,
+                                       handle->page_dir.cptr,
+                                       info.num_pages,
+                                       &attrs,
+                                       info.caps,
+                                       &vaddr);
+    if(error) {
+        ZF_LOGE("Failed to map device");
+        return -8;
+    }
+
+    
+    error = copy_devmem_to_proc(handle,
+                                info.vaddr,
+                                info.paddr,
+                                info.num_pages,
+                                info.size_bits,
+                                add_caps ? info.caps : NULL,
+                                new_device_name);
+    if(error) {
+        ZF_LOGE("Failed to copy device memory to child");
+        return -9;
+    }
+
+    return 0;
+}
+
+
+
+
+/******************************************************************************
+ *
+ * DEVICE CONFIG
+ *
+ *****************************************************************************/
 
 int process_map_device_pages(process_handle_t *handle,
                              void *paddr,
@@ -357,6 +530,27 @@ int process_map_device_pages_give_caps(process_handle_t *handle,
 }
 
 
+int process_map_my_device(process_handle_t *handle,
+                          const char *device_name,
+                          const char *new_device_name)
+{
+    return process_map_my_device_pages_optional_caps(handle, 
+                                                     device_name,
+                                                     new_device_name,
+                                                     false);
+
+}
+
+int process_map_my_device_give_caps(process_handle_t *handle,
+                                    const char *device_name,
+                                    const char *new_device_name)
+{
+    return process_map_my_device_pages_optional_caps(handle, 
+                                                     device_name,
+                                                     new_device_name,
+                                                     true);
+
+}
 
 int process_add_device_irq(process_handle_t *handle,
                            int irq_number,
@@ -371,19 +565,24 @@ int process_add_device_irq(process_handle_t *handle,
         return -1;
     }
 
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
-        return -2; /* TODO come up with error codes */
-    }
-
     if(init_objects.info == NULL) {
         ZF_LOGE("This function can only be used by the root task");
+        return -2;
+    }
+
+    if(device_name == NULL) {
+        ZF_LOGE("Null device name passed");
         return -3;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed.");
+        return -4; /* TODO come up with error codes */
     }
     
     if(handle->running) {
         ZF_LOGW("Process is already running.");
-        return -4; /* TODO come up with error codes */
+        return -5; /* TODO come up with error codes */
     }
 
     seL4_CPtr irq_cap;
@@ -433,19 +632,11 @@ int process_add_device_irq(process_handle_t *handle,
      */
     seL4_IRQHandler_Ack(irq_cap);
 
-    /**
-     * Setup init data. Copy caps to child process
-     */
-    IrqData *irq_data = malloc(sizeof(IrqData));
-    irq_data__init(irq_data);
-
-    irq_data->name = (char *)device_name; /* protobuf uses non const strings */
-    irq_data->irq_cap = copy_cap_into_next_slot(handle, irq_cap, seL4_AllRights);
-    irq_data->ep_cap = copy_cap_into_next_slot(handle, irq_notification.cptr, seL4_AllRights);
-    irq_data->number = irq_number;
-    /* Push onto irq list */
-    irq_data->next = handle->init_data.irq_list_head;
-    handle->init_data.irq_list_head = irq_data;
+    error = copy_irq_to_proc(handle, irq_cap, irq_notification.cptr, irq_number, device_name);
+    if(error) {
+        ZF_LOGE("Failed to copy irq caps to proc");
+        return -9;
+    }
 
     free_parent_cap(irq_cap);
     free_parent_cap(irq_notification.cptr);
@@ -454,6 +645,55 @@ int process_add_device_irq(process_handle_t *handle,
 }
 
 
+int process_add_my_device_irq(process_handle_t *handle,
+                              const char *device_name,
+                              const char *new_device_name)
+{
+    int error;
+
+    /* TODO: Implement sync for init objects */
+    if(!init_objects.initialized) {
+        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to complete.");
+        return -1;
+    }
+
+    if(device_name == NULL || new_device_name == NULL) {
+        ZF_LOGE("Null device name passed");
+        return -3;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Invalid process handle pointer passed.");
+        return -4; /* TODO come up with error codes */
+    }
+    
+    if(handle->running) {
+        ZF_LOGW("Process is already running.");
+        return -5; /* TODO come up with error codes */
+    }
+
+    init_irq_info_t info;
+    error = init_lookup_irq(device_name, &info);
+    
+    error = copy_irq_to_proc(handle, info.irq, info.ep, info.number, new_device_name);
+    if(error) {
+        ZF_LOGE("Failed to copy irq caps to child");
+        return -6;
+    }
+
+    /**
+     * TODO: do we free the parent's caps?
+     */
+
+    return 0;
+}
+                              
+/******************************************************************************
+ *
+ * UNTYPED CONFIG
+ *
+ *****************************************************************************/
 
 int process_give_untyped_resources(process_handle_t *handle,
                                    seL4_Word size_bits,
@@ -500,7 +740,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     
         untyped_data__init(ut_data);
         ut_data->size = size_bits;
-        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr, seL4_AllRights); /* TODO:perms?*/
+        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr, seL4_AllRights); 
         if(ut_data->cap == seL4_CapNull) {
             ZF_LOGE("Failed to copy ut cap");
             return -6;

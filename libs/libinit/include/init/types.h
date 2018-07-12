@@ -16,11 +16,22 @@
 /**
  * @brief the return value of irq lookups.
  */
-typedef struct init_irq_caps {
+typedef struct init_irq_info {
     seL4_CPtr ep;
     seL4_CPtr irq;
-} init_irq_caps_t;
+    seL4_Word number;
+} init_irq_info_t;
 
+/**
+ * @brief the return value of device memory lookups.
+ */
+typedef struct init_devmem_info {
+    void *vaddr;
+    void *paddr;
+    seL4_Word size_bits;
+    seL4_Word num_pages;
+    seL4_CPtr *caps;
+} init_devmem_info_t;
 
 /**
  * @brief Bookkeeping objects/managers/allocators

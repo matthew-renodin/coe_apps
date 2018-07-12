@@ -35,8 +35,9 @@ message DeviceMemoryData {
   required uint64 phys_addr = 3;
   required uint64 size_bits = 4;
   required uint64 num_pages = 5;
-  repeated uint64 caps = 6;
-  optional DeviceMemoryData next = 7;
+  repeated uint32 caps32 = 6;
+  repeated uint64 caps64 = 7;
+  optional DeviceMemoryData next = 8;
 }
 
 

@@ -164,14 +164,6 @@ int process_add_my_device_irq(process_handle_t *handle,
 
 
 
-/****** IPC Configuration ******/
-
-
-
-
-
-
-
 
 /****** Endpoint IPC Configuration ******/
 
