@@ -193,19 +193,19 @@ int main(void) {
     printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
 
     /**
-     * Try to crash
+     * Try to crash: test vka locking.
      */
-//    thread_handle_t *vka_abuser_1 = thread_handle_create(&thread_1mb_high_priority);
-//    ZF_LOGF_IF(vka_abuser_1 == NULL, "Failed to create thread");
-//
-//    thread_handle_t *vka_abuser_2 = thread_handle_create(&thread_1mb_high_priority);
-//    ZF_LOGF_IF(vka_abuser_2 == NULL, "Failed to create thread");
-//    
-//    err = thread_start(vka_abuser_1, vka_abuser, NULL);
-//    ZF_LOGF_IF(err, "Failed to create thread");
-//
-//    err = thread_start(vka_abuser_2, vka_abuser, NULL);
-//    ZF_LOGF_IF(err, "Failed to create thread");
+    thread_handle_t *vka_abuser_1 = thread_handle_create(&thread_1mb_high_priority);
+    ZF_LOGF_IF(vka_abuser_1 == NULL, "Failed to create thread");
+
+    thread_handle_t *vka_abuser_2 = thread_handle_create(&thread_1mb_high_priority);
+    ZF_LOGF_IF(vka_abuser_2 == NULL, "Failed to create thread");
+    
+    err = thread_start(vka_abuser_1, vka_abuser, NULL);
+    ZF_LOGF_IF(err, "Failed to create thread");
+
+    err = thread_start(vka_abuser_2, vka_abuser, NULL);
+    ZF_LOGF_IF(err, "Failed to create thread");
 
     return 0;
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <atomic_sync/types.h>
-#include <lockvka/lockvka.h>
+#include <lockwrapper/lockvka.h>
 
 static int mutex_lock_generic(void *m) {
     return mutex_lock((mutex_t *) m);

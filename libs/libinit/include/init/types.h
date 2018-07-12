@@ -12,7 +12,7 @@
 #include <sync/mutex.h>
 #include <sync/recursive_mutex.h>
 
-#include <lockvka/lockvka.h>
+#include <lockwrapper/lockvka.h>
 
 #include <init/init.h>
 #include "init_data.pb-c.h"

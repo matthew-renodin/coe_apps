@@ -1,4 +1,4 @@
 #pragma once
 
-#include <lockvka/prototypes.h>
-#include <lockvka/wrappers.h>
+#include <lockwrapper/prototypes.h>
+#include <lockwrapper/wrappers.h>

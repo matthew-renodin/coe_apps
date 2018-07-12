@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lockvka/lockvka.h>
+#include <lockwrapper/lockvka.h>
 #include <sync/mutex.h>
 #include <sync/recursive_mutex.h>
 
