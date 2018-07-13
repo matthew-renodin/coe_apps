@@ -23,6 +23,13 @@ const thread_attr_t thread_1mb_high_priority = {
     .cpu_affinity = 0, /* TODO is this sane? */
 };
 
+
+static inline bool is_current_thread(thread_handle_t *handle) {
+    return handle == (thread_handle_t*)init_get_thread_local_storage();
+}
+
+
+
 thread_handle_t *thread_handle_create(const thread_attr_t *attr)
 {
     UNUSED int error;
@@ -90,11 +97,15 @@ static void thread_init_routine(thread_handle_t *handle,
     /**
      * Take the return value of the thread and send it to the joining thread
      */
-    seL4_Send(handle->join_ep.cptr,
-              seL4_MessageInfo_new((seL4_Word)start_routine(arg), 0, 0, 0));
+    handle->returned_value = start_routine(arg);
+    seL4_Signal(handle->join_notification.cptr);
     
     ZF_LOGD("Thread finished executing");
-    while(1); /* TODO */
+    while(1) {
+        /* TODO */
+        seL4_Sleep(5000);
+        ZF_LOGD("Thread %lu finished, yet undestroyed", (long unsigned)handle->thread_id);
+    }
 }
 
 
@@ -186,17 +197,27 @@ seL4_CPtr thread_get_sync_notification()
 
 void *thread_join(thread_handle_t *handle)
 {
-    seL4_MessageInfo_t ret = seL4_Recv(handle->join_ep.cptr, NULL);
-    return (void *)seL4_MessageInfo_get_label(ret);
+    if(handle == NULL) {
+        ZF_LOGE("Null thread handle passed");
+    }
+
+    seL4_Wait(handle->join_notification.cptr, NULL);
+
+    /**
+     * Wake up the next guy in the join queue.
+     */
+    seL4_Signal(handle->join_notification.cptr);
+
+    return handle->returned_value;
 }
 
 
 thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
-                                seL4_Word cnode_root_data,
-                                seL4_CPtr fault_ep,
-                                seL4_CPtr page_dir,
-                                vspace_t *vspace,
-                                const thread_attr_t *attr)
+                                             seL4_Word cnode_root_data,
+                                             seL4_CPtr fault_ep,
+                                             seL4_CPtr page_dir,
+                                             vspace_t *vspace,
+                                             const thread_attr_t *attr)
 {
     int error;
 
@@ -239,9 +260,9 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     /**
      * Create an endpoint for the parent thread to wait on the child.
      */
-    error = vka_alloc_endpoint(&init_objects.vka, &handle->join_ep);
+    error = vka_alloc_notification(&init_objects.vka, &handle->join_notification);
     if(error) {
-        ZF_LOGW("Failed to allocate ep.");
+        ZF_LOGW("Failed to allocate notification ep.");
         return NULL;
     }
 
@@ -302,6 +323,62 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
 
     return handle;
 
+}
+
+
+int thread_destroy(thread_handle_t *handle)
+{
+    UNUSED int error;
+
+    if(!init_check_initialized()) {
+        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
+                "Run init_process or init_root_task to setup.");
+        return -1;
+    }
+
+    if(handle == NULL) {
+        ZF_LOGE("Null thread handle passed");
+        return -2;
+    }
+
+    if(is_current_thread(handle)) {
+        ZF_LOGE("Cannot destroy currently executing thread");
+        return -3;
+    }
+
+    seL4_TCB_Suspend(handle->tcb.cptr);
+
+    vka_free_object(&init_objects.vka, &handle->tcb);
+    vka_free_object(&init_objects.vka, &handle->sync_notification);
+
+    void * stack_bottom = (void*)((uintptr_t)handle->stack_vaddr -
+                                  (handle->stack_size_pages << PAGE_BITS_4K));
+    vspace_unmap_pages(&init_objects.vspace,
+                       stack_bottom,
+                       handle->stack_size_pages,
+                       PAGE_BITS_4K,
+                       &init_objects.vka);
+
+    vspace_unmap_pages(&init_objects.vspace,
+                       handle->ipc_buffer_vaddr,
+                       1,
+                       PAGE_BITS_4K,
+                       &init_objects.vka);
+
+    /**
+     * Wake any threads wanting to join
+     */
+    seL4_Signal(handle->join_notification.cptr);
+    seL4_Wait(handle->join_notification.cptr, NULL); /* Wait till everyone wakes up. */
+
+    /**
+     * TODO: There is still a race condition if someone entered into the
+     * join function but hasn't waited yet.
+     */
+    vka_free_object(&init_objects.vka, &handle->join_notification);
+
+
+    return 0;
 }
 
 

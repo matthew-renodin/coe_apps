@@ -61,6 +61,10 @@ int process_create(const char *elf_file_name,
  */
 int process_run(process_handle_t *handle, int argc, char *argv[]);
 
+/**
+ * @brief destory a process and cleanup its resources.
+ */
+int process_destroy(process_handle_t *handle);
 
 
 /****** Device/DMA/SoC Configuration ******/

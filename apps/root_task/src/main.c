@@ -207,6 +207,12 @@ int main(void) {
     err = thread_start(vka_abuser_2, vka_abuser, NULL);
     ZF_LOGF_IF(err, "Failed to create thread");
 
+    /**
+     * Test process destruction.
+     */
+    //process_destroy(&child1);
+    //process_destroy(&child2);
+
     return 0;
 }
 

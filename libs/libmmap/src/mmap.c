@@ -78,6 +78,12 @@ static int remap_fix_executable_perms(seL4_CPtr page,
 }
 
 
+static inline void* addr_at_page(void* addr, seL4_Word page, seL4_Word bits) {
+    return (void*)((uintptr_t)addr + (page << bits));
+}
+
+
+
 
 int mmap_new_stack_custom(vspace_t *vspace,
                           seL4_CPtr vspace_root_cap,
@@ -132,13 +138,15 @@ int mmap_new_stack_custom(vspace_t *vspace,
             return -4;
         }
 
+        void *page_addr =  addr_at_page(*vaddr, i, attr->page_size_bits);
+
         /**
          * Map it into the page directory
          */
         error = vspace_map_pages_at_vaddr(vspace,
                                           &frame_obj.cptr,
                                           &frame_obj.ut,
-                                          (void*)((seL4_Word)(*vaddr)+(i << attr->page_size_bits)),
+                                          page_addr,
                                           1, /* map a page at a time */
                                           attr->page_size_bits,
                                           res);

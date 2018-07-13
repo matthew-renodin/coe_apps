@@ -106,7 +106,16 @@ int main(int argc, char **argv) {
     error = thread_start(worker, worker_thread, (void*)0xdeadbeef);
     ZF_LOGF_IF(error, "Failed to start thread");
 
+
+    
     printf("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
+    nanosleep(&(struct timespec){.tv_sec=3, .tv_nsec=0}, NULL); 
+
+    thread_destroy(worker);
+
+    seL4_DebugDumpScheduler();
+
+    while(1);
     
     return 0;
 }

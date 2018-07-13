@@ -23,8 +23,10 @@ typedef struct thread_handle {
 
     vka_object_t tcb;
     vka_object_t sync_notification;
-    vka_object_t join_ep;
-
+    vka_object_t join_notification;
+    
+    void *returned_value;
+    
     void *stack_vaddr;
     seL4_Word stack_size_pages;
 

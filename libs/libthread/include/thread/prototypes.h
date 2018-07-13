@@ -117,6 +117,16 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                              const thread_attr_t *attr);
 
 
+int thread_destroy(thread_handle_t *handle);
+
+int thread_destroy_custom(thread_handle_t *handle,
+                                 seL4_CPtr cnode,
+                                 seL4_CPtr cnode_root_data,
+                                 seL4_CPtr fault_ep,
+                                 seL4_CPtr page_dir,
+                                 vspace_t *vspace,
+                                 const thread_attr_t *attr);
+
 /* ~~~ TODO: API PHASE 2 ~~~ */
 /* debugging, listing */
 //void thread_print_threads(void);
