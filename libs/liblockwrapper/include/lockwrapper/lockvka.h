@@ -20,7 +20,7 @@ static inline void lockvka_replace(lockvka_t *lockvka, vka_t *inout_vka, lock_in
  */
 static inline int lockvka_lock(lockvka_t * lockvka) {
     assert(lockvka != NULL && lockvka->lock.mutex_lock != NULL);
-    return lockvka->lock.mutex_lock(lockvka->lock);
+    return lockvka->lock.mutex_lock(lockvka->lock.data);
 }
 
 /**
@@ -32,5 +32,5 @@ static inline int lockvka_lock(lockvka_t * lockvka) {
  */
 static inline int lockvka_unlock(lockvka_t * lockvka) {
     assert(lockvka != NULL && lockvka->lock.mutex_unlock != NULL);
-    return lockvka->lock.mutex_unlock(lockvka->lock);
+    return lockvka->lock.mutex_unlock(lockvka->lock.data);
 }

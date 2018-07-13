@@ -22,6 +22,7 @@
 #include <init/init.h>
 #include <mmap/mmap.h>
 #include <process/process.h>
+#include <lockwrapper/lockwrapper.h>
 
 
 int process_create(const char *elf_file_name,
@@ -110,13 +111,15 @@ int process_create(const char *elf_file_name,
     /**
      * Setup the new process's virtual memory bookkeeping object
      */
-    error = sel4utils_get_vspace(&init_objects.vspace,
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
+    error = sel4utils_get_vspace(&init_objects.lockvspace.parent_vspace,
                                  &handle->vspace,
                                  &handle->vspace_data,
                                  &init_objects.vka,
                                  handle->page_dir.cptr,
                                  NULL,  /* Optional function to call when objects are allocated */
                                  NULL); /* Optional args. */
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(error) {
         ZF_LOGE("Failed to create child process vspace object");
         return error;
@@ -125,11 +128,13 @@ int process_create(const char *elf_file_name,
     /**
      * Load the elf file into the new address space
      */ 
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
     handle->entry_point = sel4utils_elf_load(&handle->vspace,
-                                             &init_objects.vspace,
+                                             &init_objects.lockvspace.parent_vspace,
                                              &init_objects.vka,
                                              &init_objects.vka,
                                              elf_file_name);
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(handle->entry_point == NULL) { 
         ZF_LOGE("Failed to load elf file.");
         return -3;

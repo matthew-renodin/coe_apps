@@ -25,11 +25,14 @@ void lockvspace_set_allocated_object_cookie(lockvspace_t *lockvspace, void *new_
  * 
  * This call should be rarely used, the locking mechanism is called without management for any calls into
  * the vspace object. But in the case that you need to directly access internal data (as is the case when
- * you call into "sel4_utils" functions), you should lock the data before accessing it
+ * you call into "sel4utils" functions), you should lock the data before accessing it
+ * 
+ * It would also be wise to only use this function if you have initialized lock to be re-entrant OR if you refer to
+ * the parent vspace while holding the lock
  */
-static inline int lockvspace_lock(lockvspace_t * lockvspace) {
-    assert(lockvspace != NULL && lockvspace->lock.mutex_lock != NULL);
-    return lockvspace->lock.mutex_lock(lockvspace->lock);
+static inline int lockvspace_lock(vspace_t *vspace, lockvspace_t *lockvspace) {
+    assert(vspace != NULL && vspace->sync_data == lockvspace && lockvspace != NULL && lockvspace->lock.mutex_lock != NULL);
+    return lockvspace->lock.mutex_lock(lockvspace->lock.data);
 }
 
 /**
@@ -37,9 +40,12 @@ static inline int lockvspace_lock(lockvspace_t * lockvspace) {
  * 
  * This call should be rarely used, the locking mechanism is called without management for any calls into
  * the vspace object. But in the case that you need to directly access internal data (as is the case when
- * you call into "sel4_utils" functions), you should lock the data before accessing it
+ * you call into "sel4utils" functions), you should lock the data before accessing it
+ * 
+ * It would also be wise to only use this function if you have initialized lock to be re-entrant OR if you refer to
+ * the parent vspace while holding the lock
  */
-static inline int lockvspace_unlock(lockvspace_t * lockvspace) {
-    assert(lockvspace != NULL && lockvspace->lock.mutex_unlock != NULL);
-    return lockvspace->lock.mutex_unlock(lockvspace->lock);
+static inline int lockvspace_unlock(vspace_t *vspace, lockvspace_t * lockvspace) {
+    assert(vspace != NULL && vspace->sync_data == lockvspace && lockvspace != NULL && lockvspace->lock.mutex_lock != NULL);
+    return lockvspace->lock.mutex_unlock(lockvspace->lock.data);
 }
