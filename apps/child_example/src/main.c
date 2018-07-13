@@ -88,6 +88,10 @@ void * worker_thread(void *cookie) {
 }
 
 
+void *thread_abuser(void *cookie) {
+    return NULL;
+}
+
 /**
  * Demo entry point
  */
@@ -108,14 +112,24 @@ int main(int argc, char **argv) {
 
 
     
-    printf("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
-    nanosleep(&(struct timespec){.tv_sec=3, .tv_nsec=0}, NULL); 
-
-    thread_destroy(worker);
+    ZF_LOGI("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
+    thread_destroy_free_handle(&worker);
 
     seL4_DebugDumpScheduler();
 
-    while(1);
+//    while(1) {
+//        thread_handle_t *tabuser = thread_handle_create(&thread_1mb_high_priority);
+//        ZF_LOGF_IF(tabuser == NULL, "Failed to create thread.");
+//
+//        ZF_LOGI("Thread started with stack top: %p", tabuser->stack_vaddr);
+//        error = thread_start(tabuser, thread_abuser, (void*)NULL);
+//        ZF_LOGF_IF(error, "Failed to start thread");
+//
+//        thread_join(tabuser);
+//        error = thread_destroy_free_handle(&tabuser);
+//        ZF_LOGF_IF(error, "Failed to destroy thread");
+//
+//    }
     
     return 0;
 }

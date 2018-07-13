@@ -35,14 +35,16 @@
 
 int mmap_new_pages(seL4_Word num_pages,
                    const mmap_entry_attr_t *attr,
-                   void **vaddr);
+                   void **vaddr,
+                   reservation_t *res);
 
 int mmap_new_pages_custom(vspace_t *vspace,
                           seL4_CPtr vspace_root_cap,
                           seL4_Word num_pages,
                           const mmap_entry_attr_t *attr,
                           seL4_CPtr *caps,
-                          void **vaddr);
+                          void **vaddr,
+                          reservation_t *res);
 
 int mmap_new_device_pages_custom(vspace_t *vspace,
                                  seL4_CPtr vspace_root_cap,
@@ -50,16 +52,19 @@ int mmap_new_device_pages_custom(vspace_t *vspace,
                                  seL4_Word num_pages,
                                  const mmap_entry_attr_t *attr,
                                  seL4_CPtr *caps,
-                                 void **vaddr);
+                                 void **vaddr,
+                                 reservation_t *res);
 
 int mmap_existing_pages_custom(vspace_t *vspace,
                                seL4_CPtr vspace_root_cap,
                                seL4_Word num_pages,
                                const mmap_entry_attr_t *attr,
                                seL4_CPtr *caps,
-                               void **vaddr);
+                               void **vaddr,
+                               reservation_t *res);
 
 int mmap_new_stack_custom(vspace_t *vspace,
                           seL4_CPtr vspace_root_cap,
                           seL4_Word num_pages,
-                          void **vaddr);
+                          void **vaddr,
+                          reservation_t *res);

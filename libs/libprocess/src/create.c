@@ -152,7 +152,8 @@ int process_create(const char *elf_file_name,
                                   handle->attrs.heap_size_pages,
                                   &mmap_attr_4k_data,
                                   NULL,
-                                  &handle->heap_vaddr);
+                                  &handle->heap_vaddr,
+                                  &handle->heap_res);
     if(error) {
         ZF_LOGE("Failed to map in the heap.");
         return error;

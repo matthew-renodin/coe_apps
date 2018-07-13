@@ -199,6 +199,7 @@ void *thread_join(thread_handle_t *handle)
 {
     if(handle == NULL) {
         ZF_LOGE("Null thread handle passed");
+        return NULL;
     }
 
     seL4_Wait(handle->join_notification.cptr, NULL);
@@ -273,7 +274,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     error = mmap_new_stack_custom(vspace,
                                   page_dir,
                                   handle->stack_size_pages,
-                                  &handle->stack_vaddr);
+                                  &handle->stack_vaddr,
+                                  &handle->stack_res);
     if(error) {
         ZF_LOGW("Failed to allocate stack");
         return NULL;
@@ -287,7 +289,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                   1,
                                   &mmap_attr_4k_data,
                                   &handle->ipc_buffer_cap,
-                                  &handle->ipc_buffer_vaddr);
+                                  &handle->ipc_buffer_vaddr,
+                                  &handle->ipc_buffer_res);
     if(error) {
         ZF_LOGW("Failed to allocate ipc buffer");
         return NULL;
@@ -326,7 +329,7 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
 }
 
 
-int thread_destroy(thread_handle_t *handle)
+int thread_destroy_free_handle(thread_handle_t **handle_ref)
 {
     UNUSED int error;
 
@@ -336,10 +339,12 @@ int thread_destroy(thread_handle_t *handle)
         return -1;
     }
 
-    if(handle == NULL) {
+    if(handle_ref == NULL || *handle_ref == NULL) {
         ZF_LOGE("Null thread handle passed");
         return -2;
     }
+
+    thread_handle_t *handle = *handle_ref;
 
     if(is_current_thread(handle)) {
         ZF_LOGE("Cannot destroy currently executing thread");
@@ -365,6 +370,10 @@ int thread_destroy(thread_handle_t *handle)
                        PAGE_BITS_4K,
                        &init_objects.vka);
 
+
+    vspace_free_reservation(&init_objects.vspace, handle->stack_res);
+    vspace_free_reservation(&init_objects.vspace, handle->ipc_buffer_res);
+
     /**
      * Wake any threads wanting to join
      */
@@ -377,6 +386,13 @@ int thread_destroy(thread_handle_t *handle)
      */
     vka_free_object(&init_objects.vka, &handle->join_notification);
 
+    
+    free(handle);
+    
+    /**
+     * Help prevent double free/use after free bugs.
+     */
+    *handle_ref = NULL;
 
     return 0;
 }

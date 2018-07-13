@@ -371,14 +371,15 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
     attrs.page_size_bits = page_bits;
 
     void * vaddr;
-
+    reservation_t res; /* TODO: track this reservation to free later */
     error = mmap_new_device_pages_custom(&handle->vspace,
                                          handle->page_dir.cptr,
                                          paddr,
                                          num_pages,
                                          &attrs,
                                          caps,
-                                         &vaddr);
+                                         &vaddr,
+                                         &res);
     if(error) {
         ZF_LOGE("Failed to map device");
         free(caps);
@@ -462,13 +463,14 @@ static int process_map_my_device_pages_optional_caps(process_handle_t *handle,
     attrs.page_size_bits = info.size_bits;
 
     void * vaddr;
-
+    reservation_t res; /* TODO: track this reservation to free later */
     error = mmap_existing_pages_custom(&handle->vspace,
                                        handle->page_dir.cptr,
                                        info.num_pages,
                                        &attrs,
                                        info.caps,
-                                       &vaddr);
+                                       &vaddr,
+                                       &res);
     if(error) {
         ZF_LOGE("Failed to map device");
         return -8;
@@ -1032,12 +1034,14 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
     mmap_entry_attr_t attrs = mmap_attr_4k_data;
     attrs.readable = 1;
     attrs.writable = 1;
+    reservation_t res; /* TODO: track this reservation to free later */
     error = mmap_new_pages_custom(&init_objects.vspace,
                                   init_objects.page_dir_cap,
                                   num_pages,
                                   &attrs,
                                   caps,
-                                  new_ptr);
+                                  new_ptr,
+                                  &res);
     if(error) {
         ZF_LOGE("Failed to map new pages into parent");
         free(caps);
@@ -1083,12 +1087,14 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
 
 
         void *vaddr;
+        reservation_t res; /* TODO: track this reservation to free later */
         error = mmap_existing_pages_custom(&handle->vspace,
                                            handle->page_dir.cptr,
                                            num_pages,
                                            &attrs,
                                            caps,
-                                           &vaddr);
+                                           &vaddr,
+                                           &res);
         if(error) {
             ZF_LOGE("Failed to share pages to child process");
             free(caps);
@@ -1173,12 +1179,14 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
             /**
              * For the first process we make new pages.
              */
+            reservation_t res; /* TODO: track this reservation to free later */
             error = mmap_new_pages_custom(&handle->vspace,
                                           handle->page_dir.cptr,
                                           num_pages,
                                           &attrs,
                                           caps,
-                                          &vaddr);
+                                          &vaddr,
+                                          &res);
             if(error) {
                 ZF_LOGE("Failed to map new pages into child");
                 free(caps);
@@ -1205,12 +1213,14 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
             } 
     
     
+            reservation_t res; /* TODO: track this reservation to free later */
             error = mmap_existing_pages_custom(&handle->vspace,
                                                handle->page_dir.cptr,
                                                num_pages,
                                                &attrs,
                                                caps,
-                                               &vaddr);
+                                               &vaddr,
+                                               &res);
             if(error) {
                 ZF_LOGE("Failed to share pages to child process");
                 free(caps);

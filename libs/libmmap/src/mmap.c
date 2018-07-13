@@ -88,7 +88,8 @@ static inline void* addr_at_page(void* addr, seL4_Word page, seL4_Word bits) {
 int mmap_new_stack_custom(vspace_t *vspace,
                           seL4_CPtr vspace_root_cap,
                           seL4_Word num_pages,
-                          void **vaddr)
+                          void **vaddr,
+                          reservation_t *res)
 {
     int error;
 
@@ -115,12 +116,12 @@ int mmap_new_stack_custom(vspace_t *vspace,
     /**
      * Make reservation for our pages. Reserve an extra page for the gaurd.
      */
-    reservation_t res = vspace_reserve_range(vspace,
-                                             (num_pages + 1) * BIT(attr->page_size_bits),
-                                             rights,
-                                             attr->cacheable,
-                                             vaddr);
-    if(res.res == NULL || *vaddr == NULL) {
+    *res = vspace_reserve_range(vspace,
+                                (num_pages + 1) * BIT(attr->page_size_bits),
+                                rights,
+                                attr->cacheable,
+                                vaddr);
+    if(res->res == NULL || *vaddr == NULL) {
         ZF_LOGE("Failed to reserve space for the page mapping.");
         return -3;
     }
@@ -149,7 +150,7 @@ int mmap_new_stack_custom(vspace_t *vspace,
                                           page_addr,
                                           1, /* map a page at a time */
                                           attr->page_size_bits,
-                                          res);
+                                          *res);
         if(error) {
             ZF_LOGE("Failed to map a page at %lu",
                     (long unsigned)(*vaddr) + (i << attr->page_size_bits));
@@ -183,7 +184,8 @@ static int mmap_device_pages_custom(vspace_t *vspace,
                                     const mmap_entry_attr_t *attr,
                                     seL4_CPtr *caps,
                                     bool use_existing_caps,
-                                    void **vaddr)
+                                    void **vaddr,
+                                    reservation_t *res)
 {
     int error;
 
@@ -214,12 +216,12 @@ static int mmap_device_pages_custom(vspace_t *vspace,
     /**
      * Make reservation for our pages
      */
-    reservation_t res = vspace_reserve_range(vspace,
-                                             num_pages * BIT(attr->page_size_bits),
-                                             rights,
-                                             attr->cacheable,
-                                             vaddr);
-    if(res.res == NULL || *vaddr == NULL) {
+    *res = vspace_reserve_range(vspace,
+                                num_pages * BIT(attr->page_size_bits),
+                                rights,
+                                attr->cacheable,
+                                vaddr);
+    if(res->res == NULL || *vaddr == NULL) {
         ZF_LOGE("Failed to reserve space for the page mapping.");
         return -3;
     }
@@ -269,7 +271,7 @@ static int mmap_device_pages_custom(vspace_t *vspace,
                                           (void*)((seL4_Word)(*vaddr)+(i << attr->page_size_bits)),
                                           1, /* map a page at a time */
                                           attr->page_size_bits,
-                                          res);
+                                          *res);
         if(error) { /* TODO add more sophisticated error checking */
             ZF_LOGE("Failed to map a page at %lu",
                     (long unsigned)(*vaddr) + (i << attr->page_size_bits));
@@ -302,7 +304,8 @@ static int mmap_device_pages_custom(vspace_t *vspace,
 
 int mmap_new_pages(seL4_Word num_pages,
                    const mmap_entry_attr_t *attr,
-                   void **vaddr)
+                   void **vaddr,
+                   reservation_t *res)
 {
 
     return mmap_device_pages_custom(&init_objects.vspace,
@@ -312,7 +315,8 @@ int mmap_new_pages(seL4_Word num_pages,
                                     attr,
                                     NULL,
                                     false,
-                                    vaddr);
+                                    vaddr,
+                                    res);
 }
 
 
@@ -321,7 +325,8 @@ int mmap_new_pages_custom(vspace_t *vspace,
                           seL4_Word num_pages,
                           const mmap_entry_attr_t *attr,
                           seL4_CPtr *caps,
-                          void **vaddr)
+                          void **vaddr,
+                          reservation_t *res)
 {
     return mmap_device_pages_custom(vspace,
                                     vspace_root_cap,
@@ -330,7 +335,8 @@ int mmap_new_pages_custom(vspace_t *vspace,
                                     attr,
                                     caps,
                                     false,
-                                    vaddr);
+                                    vaddr,
+                                    res);
 }
 
 
@@ -340,7 +346,8 @@ int mmap_new_device_pages_custom(vspace_t *vspace,
                                  seL4_Word num_pages,
                                  const mmap_entry_attr_t *attr,
                                  seL4_CPtr *caps,
-                                 void **vaddr)
+                                 void **vaddr,
+                                 reservation_t *res)
 {
     return mmap_device_pages_custom(vspace,
                                     vspace_root_cap,
@@ -349,7 +356,8 @@ int mmap_new_device_pages_custom(vspace_t *vspace,
                                     attr,
                                     caps,
                                     false,
-                                    vaddr);
+                                    vaddr,
+                                    res);
 }
 
 
@@ -358,7 +366,8 @@ int mmap_existing_pages_custom(vspace_t *vspace,
                                seL4_Word num_pages,
                                const mmap_entry_attr_t *attr,
                                seL4_CPtr *caps,
-                               void **vaddr)
+                               void **vaddr,
+                               reservation_t *res)
 {
     return mmap_device_pages_custom(vspace,
                                     vspace_root_cap,
@@ -367,7 +376,8 @@ int mmap_existing_pages_custom(vspace_t *vspace,
                                     attr,
                                     caps,
                                     true,
-                                    vaddr);
+                                    vaddr,
+                                    res);
 }
 
 

@@ -72,6 +72,7 @@ typedef struct process_handle {
     process_attr_t attrs;
 
     void* heap_vaddr;
+    reservation_t heap_res;
 
     vka_object_t cnode;
     vka_object_t fault_ep;

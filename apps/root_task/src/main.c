@@ -68,6 +68,32 @@ UNUSED static void *vka_abuser(void* arg) {
     return NULL;
 }
 
+UNUSED static void *vspace_abuser(void* arg) {
+    while(1) {
+        void *addr;
+        seL4_Word num_pages = 1;
+        reservation_t res = vspace_reserve_range(&init_objects.vspace,
+                                                 num_pages * PAGE_SIZE_4K,
+                                                 seL4_AllRights,
+                                                 1,
+                                                 &addr);
+        ZF_LOGF_IF(res.res == NULL, "Failed to reserve range");
+        int error = vspace_new_pages_at_vaddr(&init_objects.vspace,
+                                              addr,
+                                              num_pages,
+                                              PAGE_BITS_4K,
+                                              res);
+        ZF_LOGF_IF(error, "Failed to make new pages");
+        vspace_unmap_pages(&init_objects.vspace,
+                           addr,
+                           num_pages,
+                           PAGE_BITS_4K,
+                           &init_objects.vka);
+        vspace_free_reservation(&init_objects.vspace, res);
+    }
+    return NULL;
+}
+
 
 
 /**
@@ -193,19 +219,17 @@ int main(void) {
     printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
 
     /**
-     * Try to crash: test vka locking.
+     * Try to crash: test vka, vspace locking.
      */
-    thread_handle_t *vka_abuser_1 = thread_handle_create(&thread_1mb_high_priority);
-    ZF_LOGF_IF(vka_abuser_1 == NULL, "Failed to create thread");
+    for(int i = 0; i < 4; i++) {
+        thread_attr_t ts_test_attr = thread_1mb_high_priority;
+        ts_test_attr.cpu_affinity = i % 4;
+        thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
+        ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
 
-    thread_handle_t *vka_abuser_2 = thread_handle_create(&thread_1mb_high_priority);
-    ZF_LOGF_IF(vka_abuser_2 == NULL, "Failed to create thread");
-    
-    err = thread_start(vka_abuser_1, vka_abuser, NULL);
-    ZF_LOGF_IF(err, "Failed to create thread");
-
-    err = thread_start(vka_abuser_2, vka_abuser, NULL);
-    ZF_LOGF_IF(err, "Failed to create thread");
+        err = thread_start(thread_safe_tester, vspace_abuser, NULL);
+        ZF_LOGF_IF(err, "Failed to create thread");
+    }
 
     /**
      * Test process destruction.

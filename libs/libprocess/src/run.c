@@ -56,12 +56,14 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     ZF_LOGV("Starting process with init data size: %lu", raw_size);
 
     void *init_data_vaddr;
+    reservation_t res; /* TODO: track this reservation to free later */
     error = mmap_new_pages_custom(&handle->vspace,
                                   handle->page_dir.cptr,
                                   init_data_len / PAGE_SIZE_4K,
                                   &mmap_attr_4k_data,
                                   NULL,
-                                  &init_data_vaddr);
+                                  &init_data_vaddr,
+                                  &res);
     if(error) {
         ZF_LOGE("Failed to allocate space for the init data");
         return -5;
