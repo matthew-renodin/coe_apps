@@ -1,54 +1,5 @@
-#pragma once
-
-#include <sel4/sel4.h>
-#include <vka/vka.h>
-
-#include <stdbool.h>
-
-typedef struct lock_interface lock_interface_t;
-
-struct lock_interface {
-	void *data;
-	int (*mutex_lock)(void *m);
-	int (*mutex_unlock)(void *m);
-};
-
-typedef struct lockvka{
-    vka_t parent_vka;
-    lock_interface_t lock;
-} lockvka_t;
-
-static inline vka_t *
-inner_vka(void * data) {
-    assert(data);
-    return &(((lockvka_t *) (data))->parent_vka);
-}
-
-static inline lock_interface_t *
-inner_lock(void * data) {
-    assert(data);
-    return &(((lockvka_t *) (data))->lock);
-}
-
-/* This horrendous section of code prevents duplication of lots of code */
-#define LOCKVKA_CALL_OPS_RETURN(type, lock, alloc, operation,...) do { \
-    type error; \
-    assert(lock != NULL && alloc != NULL && alloc->operation != NULL); \
-    lock->mutex_lock(lock->data); \
-    error = alloc->operation(alloc->data, __VA_ARGS__);\
-    lock->mutex_unlock(lock->data);\
-    return error; \
-} while(0)
-#define LOCKVKA_CALL_RETURN(type, data, ...) LOCKVKA_CALL_OPS_RETURN(type, inner_lock(data), inner_vka(data), __VA_ARGS__)
-
-#define LOCKVKA_CALL_OPS_VOID(lock, alloc, operation,...) do { \
-    assert(lock != NULL && alloc != NULL && alloc->operation != NULL); \
-    lock->mutex_lock(lock->data); \
-    alloc->operation(alloc->data, __VA_ARGS__);\
-    lock->mutex_unlock(lock->data);\
-    return;\
-} while(0)
-#define LOCKVKA_CALL_VOID(data, ...) LOCKVKA_CALL_OPS_VOID(inner_lock(data), inner_vka(data), __VA_ARGS__)
+#include <lockwrapper/lockvka.h>
+#include <lockwrapper/helpers.h>
 
 static int lockvka_cspace_alloc(void *data, seL4_CPtr *res) {
     LOCKVKA_CALL_RETURN(int, data, cspace_alloc, res);
@@ -82,7 +33,7 @@ static void lockvka_cspace_free(void *data, seL4_CPtr slot) {
     LOCKVKA_CALL_VOID(data, cspace_free, slot);
 }
 
-static inline void lockvka_make_vka(vka_t *out_vka, lockvka_t *lockvka) {
+void lockvka_make_vka(vka_t *out_vka, lockvka_t *lockvka) {
     assert(out_vka);
     assert(lockvka);
 
@@ -97,12 +48,7 @@ static inline void lockvka_make_vka(vka_t *out_vka, lockvka_t *lockvka) {
     out_vka->utspace_paddr = &lockvka_utspace_paddr;
 }
 
-static inline void lockvka_attach(lockvka_t *lockvka, vka_t parent_vka, lock_interface_t lock) {
+void lockvka_attach(lockvka_t *lockvka, vka_t parent_vka, lock_interface_t lock) {
     lockvka->parent_vka = parent_vka;
     lockvka->lock = lock;
-}
-
-static inline void lockvka_replace(lockvka_t *lockvka, vka_t *inout_vka, lock_interface_t lock) {
-    lockvka_attach(lockvka, *inout_vka, lock);
-    lockvka_make_vka(inout_vka, lockvka);
 }

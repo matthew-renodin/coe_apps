@@ -12,7 +12,7 @@
 #include <sync/mutex.h>
 #include <sync/recursive_mutex.h>
 
-#include <lockwrapper/lockvka.h>
+#include <lockwrapper/lockwrapper.h>
 
 #include <init/init.h>
 #include "init_data.pb-c.h"
@@ -53,6 +53,9 @@ typedef struct init_objects {
     allocman_t *allocman;
     simple_t simple;
     seL4_BootInfo *info;
+
+    sync_recursive_mutex_t vspace_lock;
+    lockvspace_t lockvspace;
 
     sync_mutex_t vka_lock;
     lockvka_t lockvka;

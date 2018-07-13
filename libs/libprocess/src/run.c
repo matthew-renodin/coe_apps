@@ -23,6 +23,35 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 
+static inline int 
+threadsafe_stack_write_constant(lockvspace_t *lockvspace, vspace_t *current_vspace, vspace_t *target_vspace,
+                                vka_t *vka, long value, uintptr_t *initial_stack_pointer){
+    int error = 0;
+    lockvspace_lock(current_vspace, lockvspace);
+    error = sel4utils_stack_write_constant(&lockvspace->parent_vspace, target_vspace, vka, value, initial_stack_pointer);
+    lockvspace_unlock(current_vspace, lockvspace);
+    return error;
+}
+
+static inline int
+threadsafe_stack_write(lockvspace_t *lockvspace, vspace_t *current_vspace, vspace_t *target_vspace,
+                       vka_t *vka, void *buf, size_t len, uintptr_t *stack_top) {
+    int error = 0;
+    lockvspace_lock(current_vspace, lockvspace);
+    error = sel4utils_stack_write(&lockvspace->parent_vspace, target_vspace, vka, buf, len, stack_top);
+    lockvspace_unlock(current_vspace, lockvspace);
+    return error;
+}
+
+static inline int
+threadsafe_stack_copy_args(lockvspace_t *lockvspace, vspace_t *current_vspace, vspace_t *target_vspace,
+                           vka_t *vka, int argc, char *argv[], uintptr_t *dest_argv, uintptr_t *initial_stack_pointer){
+    int error = 0;
+    lockvspace_lock(current_vspace, lockvspace);
+    error = sel4utils_stack_copy_args(&lockvspace->parent_vspace, target_vspace, vka, argc, argv, dest_argv, initial_stack_pointer);
+    lockvspace_unlock(current_vspace, lockvspace);
+    return error;
+}
 
 int process_run(process_handle_t *handle, int argc, char *argv[])
 {
@@ -90,11 +119,13 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     /**
      * We don't need the data in our address space anymore, unmap
      */
-    sel4utils_unmap_pages(&init_objects.vspace,
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
+    sel4utils_unmap_pages(&init_objects.lockvspace.parent_vspace,
                           packed_init_data,
                           init_data_len / PAGE_SIZE_4K,
                           PAGE_BITS_4K,
                           &init_objects.vka);
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     /**
      * TODO: free all the init data
      */
@@ -157,12 +188,13 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      * Copy the elf headers
      */
     uintptr_t at_phdr;
-    error = sel4utils_stack_write(&init_objects.vspace,
-                                  &handle->vspace,
-                                  &init_objects.vka,
-                                  handle->elf_phdrs,
-                                  handle->num_elf_phdrs * sizeof(Elf_Phdr),
-                                  &initial_stack_pointer);
+    error = threadsafe_stack_write(&init_objects.lockvspace,
+                                   &init_objects.vspace,
+                                   &handle->vspace,
+                                   &init_objects.vka,
+                                   handle->elf_phdrs,
+                                   handle->num_elf_phdrs * sizeof(Elf_Phdr),
+                                   &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to write the elf headers to the stack.");
         return -1;
@@ -200,26 +232,28 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     uintptr_t dest_envp[envc];
 
     /* Copy the argv onto the stack. */
-    error = sel4utils_stack_copy_args(&init_objects.vspace,
-                                      &handle->vspace,
-                                      &init_objects.vka,
-                                      argc,
-                                      argv,
-                                      dest_argv,
-                                      &initial_stack_pointer);
+    error = threadsafe_stack_copy_args(&init_objects.lockvspace,
+                                       &init_objects.vspace,
+                                       &handle->vspace,
+                                       &init_objects.vka,
+                                       argc,
+                                       argv,
+                                       dest_argv,
+                                       &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to copy argv onto the stack.");
         return error;
     }
 
     /* Copy the env onto the stack */
-    error = sel4utils_stack_copy_args(&init_objects.vspace,
-                                      &handle->vspace,
-                                      &init_objects.vka,
-                                      envc,
-                                      envp,
-                                      dest_envp,
-                                      &initial_stack_pointer);
+    error = threadsafe_stack_copy_args(&init_objects.lockvspace,
+                                       &init_objects.vspace,
+                                       &handle->vspace,
+                                       &init_objects.vka,
+                                       envc,
+                                       envp,
+                                       dest_envp,
+                                       &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to copy env onto the stack.");
         return error;
@@ -246,89 +280,97 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      */
 
     /* Null terminate aux */
-    error = sel4utils_stack_write_constant(&init_objects.vspace,
-                                           &handle->vspace,
-                                           &init_objects.vka,
-                                           0,
-                                           &initial_stack_pointer);
+    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                            &init_objects.vspace,
+                                            &handle->vspace,
+                                            &init_objects.vka,
+                                            0,
+                                            &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
-    error = sel4utils_stack_write_constant(&init_objects.vspace,
-                                           &handle->vspace,
-                                           &init_objects.vka,
-                                           0,
-                                           &initial_stack_pointer);
+    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                            &init_objects.vspace,
+                                            &handle->vspace,
+                                            &init_objects.vka,
+                                            0,
+                                            &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* write aux */
-    error = sel4utils_stack_write(&init_objects.vspace,
-                                  &handle->vspace,
-                                  &init_objects.vka,
-                                  auxv,
-                                  sizeof(auxv[0]) * auxc,
-                                  &initial_stack_pointer);
+    error = threadsafe_stack_write(&init_objects.lockvspace,
+                                   &init_objects.vspace,
+                                   &handle->vspace,
+                                   &init_objects.vka,
+                                   auxv,
+                                   sizeof(auxv[0]) * auxc,
+                                   &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* Null terminate environment */
-    error = sel4utils_stack_write_constant(&init_objects.vspace,
-                                           &handle->vspace,
-                                           &init_objects.vka,
-                                           0,
-                                           &initial_stack_pointer);
+    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                            &init_objects.vspace,
+                                            &handle->vspace,
+                                            &init_objects.vka,
+                                            0,
+                                            &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* write environment */
-    error = sel4utils_stack_write(&init_objects.vspace,
-                                  &handle->vspace,
-                                  &init_objects.vka,
-                                  dest_envp,
-                                  sizeof(dest_envp),
-                                  &initial_stack_pointer);
+    error = threadsafe_stack_write(&init_objects.lockvspace,
+                                   &init_objects.vspace,
+                                   &handle->vspace,
+                                   &init_objects.vka,
+                                   dest_envp,
+                                   sizeof(dest_envp),
+                                   &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* Null terminate arguments */
-    error = sel4utils_stack_write_constant(&init_objects.vspace,
-                                           &handle->vspace,
-                                           &init_objects.vka,
-                                           0,
-                                           &initial_stack_pointer);
+    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                            &init_objects.vspace,
+                                            &handle->vspace,
+                                            &init_objects.vka,
+                                            0,
+                                            &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* write arguments */
-    error = sel4utils_stack_write(&init_objects.vspace,
-                                  &handle->vspace,
-                                  &init_objects.vka,
-                                  dest_argv,
-                                  sizeof(dest_argv),
-                                  &initial_stack_pointer);
+    error = threadsafe_stack_write(&init_objects.lockvspace,
+                                   &init_objects.vspace,
+                                   &handle->vspace,
+                                   &init_objects.vka,
+                                   dest_argv,
+                                   sizeof(dest_argv),
+                                   &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;
     }
 
     /* Push argument count */
-    error = sel4utils_stack_write_constant(&init_objects.vspace,
-                                           &handle->vspace,
-                                           &init_objects.vka,
-                                           argc,
-                                           &initial_stack_pointer);
+    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                            &init_objects.vspace,
+                                            &handle->vspace,
+                                            &init_objects.vka,
+                                            argc,
+                                            &initial_stack_pointer);
     if (error) {
         ZF_LOGE("Failed to arugments to new process stack");
         return error;

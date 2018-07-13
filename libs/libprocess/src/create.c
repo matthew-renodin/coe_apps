@@ -22,6 +22,7 @@
 #include <init/init.h>
 #include <mmap/mmap.h>
 #include <process/process.h>
+#include <lockwrapper/lockwrapper.h>
 
 
 int process_create(const char *elf_file_name,
@@ -43,7 +44,6 @@ int process_create(const char *elf_file_name,
         return -2; /* TODO come up with error codes */
     }
     memset((void *)handle, 0, sizeof(handle));
-
 
     /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
     handle->attrs = (attr == NULL) ? process_default_attrs : *attr;
@@ -77,6 +77,12 @@ int process_create(const char *elf_file_name,
         return error;
     }
 
+    error = vka_alloc_notification(&init_objects.vka, &handle->vspace_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate a notification.");
+        return error;
+    }
+
     error = vka_alloc_notification(&init_objects.vka, &handle->vka_lock_notification);
     if(error) {
         ZF_LOGE("Failed to allocate a notification.");
@@ -105,13 +111,15 @@ int process_create(const char *elf_file_name,
     /**
      * Setup the new process's virtual memory bookkeeping object
      */
-    error = sel4utils_get_vspace(&init_objects.vspace,
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
+    error = sel4utils_get_vspace(&init_objects.lockvspace.parent_vspace,
                                  &handle->vspace,
                                  &handle->vspace_data,
                                  &init_objects.vka,
                                  handle->page_dir.cptr,
                                  NULL,  /* Optional function to call when objects are allocated */
                                  NULL); /* Optional args. */
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(error) {
         ZF_LOGE("Failed to create child process vspace object");
         return error;
@@ -120,11 +128,13 @@ int process_create(const char *elf_file_name,
     /**
      * Load the elf file into the new address space
      */ 
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
     handle->entry_point = sel4utils_elf_load(&handle->vspace,
-                                             &init_objects.vspace,
+                                             &init_objects.lockvspace.parent_vspace,
                                              &init_objects.vka,
                                              &init_objects.vka,
                                              elf_file_name);
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(handle->entry_point == NULL) { 
         ZF_LOGE("Failed to load elf file.");
         return -3;
@@ -218,6 +228,14 @@ int process_create(const char *elf_file_name,
 
     dst.capPtr = INIT_CHILD_TCB_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->main_thread->tcb.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) {
+        ZF_LOGE("Failed to copy cap into child cnode.");
+        return error;
+    }
+
+    dst.capPtr = INIT_CHILD_VSPACE_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->vspace_lock_notification.cptr, &src);
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");

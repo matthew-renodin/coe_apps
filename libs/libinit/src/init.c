@@ -445,6 +445,12 @@ int init_process(void) {
     }
 
     /**
+     * Surround VSpace with LockVSpace 
+     **/
+    sync_recursive_mutex_init(&init_objects.vspace_lock, INIT_CHILD_VSPACE_LOCK_SLOT);
+    lockvspace_replace(&init_objects.lockvspace, &init_objects.vspace, sync_recursive_mutex_make_interface(&init_objects.vspace_lock));
+
+    /**
      * At this point all the objects are initialized.
      *
      * If we have enough untypeds we can try to reserve extra space for bookkeeping.
@@ -548,6 +554,16 @@ int init_root_task(void) {
      */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
+    /* Surround Allocman VKA with LOCKVKA before VSpace is initialized */
+    vka_object_t vka_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &vka_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
+    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
+
     /* 
      * Setup the vspace object. This bookkeeps/manages the virtual memory mappings.
      */
@@ -561,16 +577,29 @@ int init_root_task(void) {
         return -6;
     }
 
+    // /* Surround VSpace with LockVSpace */
+    vka_object_t vspace_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &vspace_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    sync_recursive_mutex_init(&init_objects.vspace_lock, vspace_lock_notification.cptr);
+    lockvspace_replace(&init_objects.lockvspace, &init_objects.vspace, sync_recursive_mutex_make_interface(&init_objects.vspace_lock));
+
+
     /**
      * Setup malloc to refill from our new allocators.
      * Malloc won't work before this point so we have to use reserve_range_no_alloc
      */
-    error = sel4utils_reserve_range_no_alloc(&init_objects.vspace,
+    lockvspace_lock(&init_objects.vspace, &init_objects.lockvspace);
+    error = sel4utils_reserve_range_no_alloc(&init_objects.lockvspace.parent_vspace,
                                              &heap_res,
                                              CONFIG_LIB_INIT_ROOT_TASK_HEAP_SPACE,
                                              seL4_ReadWrite,
                                              1, /* Cacheable */
                                              &muslc_brk_reservation_start);
+    lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(error) {
         ZF_LOGE("Failed to reserve range for heap");
         return -7;
@@ -580,7 +609,6 @@ int init_root_task(void) {
     muslc_vspace_root_cap = init_objects.page_dir_cap;
 
     /* Malloc is available now */
-
 
     /* At this point all the objects are initialized, but we want to give 
      * allocman more memory for bookkeeping, so we will dynamically allocate
@@ -612,17 +640,6 @@ int init_root_task(void) {
 
     print_cpio_data();
 
-    /* Surround Allocman VKA with LOCKVKA */
-    
-    vka_object_t vka_lock_notification;
-    error = vka_alloc_notification(&init_objects.vka, &vka_lock_notification);
-    if(error) {
-        ZF_LOGE("Failed to allocate notification object.");
-        return error;
-    }
-    sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
-    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
-    
     /**
      * Setup a notification for init lock to use
      */
