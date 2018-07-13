@@ -76,6 +76,7 @@ typedef struct process_handle {
     vka_object_t cnode;
     vka_object_t fault_ep;
     vka_object_t page_dir;
+    vka_object_t vspace_lock_notification;
     vka_object_t vka_lock_notification;
     vka_object_t init_data_lock_notification;
 

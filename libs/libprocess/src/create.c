@@ -44,7 +44,6 @@ int process_create(const char *elf_file_name,
     }
     memset((void *)handle, 0, sizeof(handle));
 
-
     /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
     handle->attrs = (attr == NULL) ? process_default_attrs : *attr;
  
@@ -74,6 +73,12 @@ int process_create(const char *elf_file_name,
     error = vka_alloc_vspace_root(&init_objects.vka, &handle->page_dir);
     if(error) {
         ZF_LOGE("Failed to allocate a page dir.");
+        return error;
+    }
+
+    error = vka_alloc_notification(&init_objects.vka, &handle->vspace_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate a notification.");
         return error;
     }
 
@@ -217,6 +222,14 @@ int process_create(const char *elf_file_name,
 
     dst.capPtr = INIT_CHILD_TCB_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->main_thread->tcb.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    if(error) {
+        ZF_LOGE("Failed to copy cap into child cnode.");
+        return error;
+    }
+
+    dst.capPtr = INIT_CHILD_VSPACE_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->vspace_lock_notification.cptr, &src);
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     if(error) {
         ZF_LOGE("Failed to copy cap into child cnode.");

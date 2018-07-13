@@ -327,6 +327,10 @@ int init_process(void) {
     sync_mutex_init(&init_objects.vka_lock, INIT_CHILD_VKA_LOCK_SLOT);
     lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
 
+    /* Surround VSpace with LockVSpace */
+    sync_recursive_mutex_init(&init_objects.vspace_lock, INIT_CHILD_VSPACE_LOCK_SLOT);
+    lockvspace_replace(&init_objects.lockvspace, &init_objects.vspace, sync_recursive_mutex_make_interface(&init_objects.vspace_lock));
+
     /**
      * Parse untypeds
      */
@@ -548,6 +552,16 @@ int init_root_task(void) {
      */
     allocman_make_vka(&init_objects.vka, init_objects.allocman);
 
+    /* Surround Allocman VKA with LOCKVKA before VSpace is initialized */
+    vka_object_t vka_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &vka_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
+    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
+
     /* 
      * Setup the vspace object. This bookkeeps/manages the virtual memory mappings.
      */
@@ -581,6 +595,16 @@ int init_root_task(void) {
 
     /* Malloc is available now */
 
+    // /* Surround VSpace with LockVSpace */
+    vspace_t new_vspace;
+    vka_object_t vspace_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &vspace_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    sync_recursive_mutex_init(&init_objects.vspace_lock, vspace_lock_notification.cptr);
+    lockvspace_replace(&init_objects.lockvspace, &init_objects.vspace, sync_recursive_mutex_make_interface(&init_objects.vspace_lock));
 
     /* At this point all the objects are initialized, but we want to give 
      * allocman more memory for bookkeeping, so we will dynamically allocate
@@ -612,17 +636,6 @@ int init_root_task(void) {
 
     print_cpio_data();
 
-    /* Surround Allocman VKA with LOCKVKA */
-    
-    vka_object_t vka_lock_notification;
-    error = vka_alloc_notification(&init_objects.vka, &vka_lock_notification);
-    if(error) {
-        ZF_LOGE("Failed to allocate notification object.");
-        return error;
-    }
-    sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
-    lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
-    
     /**
      * Setup a notification for init lock to use
      */

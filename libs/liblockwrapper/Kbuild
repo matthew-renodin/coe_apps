@@ -5,5 +5,5 @@
 ###############################################################################
 
 libs-$(CONFIG_LIB_LOCK_WRAPPER) += liblockwrapper 
-liblockwrapper: libsel4 common $(libc) libsel4vka libsel4allocman libsel4sync
+liblockwrapper: libsel4 common $(libc) libsel4vka libsel4vspace libsel4sync
 
