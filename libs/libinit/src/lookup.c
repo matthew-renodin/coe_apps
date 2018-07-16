@@ -13,7 +13,7 @@
 #define LOOKUP(RET, SUFFIX, TYPE, LIST, FIELD)                                  \
     RET init_lookup_##SUFFIX(const char * name)                                 \
     {                                                                           \
-        if(!init_objects.initialized || !init_objects.init_data) {              \
+        if(!init_check_initialized() || !init_objects.init_data) {              \
             ZF_LOGE("Invalid usage of init library");                           \
             return 0;                                                           \
         }                                                                       \

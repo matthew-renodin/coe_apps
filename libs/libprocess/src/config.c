@@ -284,7 +284,7 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -429,7 +429,7 @@ static int process_map_my_device_pages_optional_caps(process_handle_t *handle,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -660,7 +660,7 @@ int process_add_my_device_irq(process_handle_t *handle,
     int error;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;
@@ -1203,7 +1203,7 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
     UNUSED int error, i, j;
 
     /* TODO: Implement sync for init objects */
-    if(!init_objects.initialized) {
+    if(!init_check_initialized()) {
         ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
                 "Run init_process or init_root_task to complete.");
         return -1;

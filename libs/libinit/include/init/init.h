@@ -40,3 +40,21 @@ static inline bool
 init_check_initialized(void) {
     return __atomic_load_n(&init_objects.initialized, __ATOMIC_SEQ_CST) ? true : false;
 }
+
+static inline int
+init_lock_init(seL4_CPtr notification) {
+    #ifdef CONFIG_DEBUG_BUILD
+    ZF_LOGF_IF(seL4_DebugCapIdentify(notification) != 6, "Init Notification has wrong cap type");
+    #endif
+    return sync_recursive_mutex_init(&init_objects.init_lock, notification);
+}
+
+static inline int
+init_lock_objects(void) {
+    return sync_recursive_mutex_lock(&init_objects.init_lock);
+}
+
+static inline int
+init_unlock_objects(void) {
+    return sync_recursive_mutex_unlock(&init_objects.init_lock);
+}

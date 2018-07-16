@@ -279,9 +279,16 @@ int init_process(void) {
     ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
     ZF_LOGD("env: INIT_DATA_SIZE=%lu", init_data_packed_size);
 
+
+    /**
+     *  Make use of init objects as thread safe as possible
+     */
+    init_lock_init(INIT_CHILD_INIT_OBJECTS_LOCK_SLOT);
+    
     /**
      * Unpack the init data from our parent process.
      */
+    init_lock_objects();
     init_objects.init_data = init_data__unpack(NULL, 
                                                init_data_packed_size,
                                                init_data_packed);
@@ -387,6 +394,7 @@ int init_process(void) {
     void **existing_frames = calloc((num_frames + 1), sizeof(void *));
     if(existing_frames == NULL) {
         ZF_LOGE("Failed to get memory for existing frames buffer");
+        init_unlock_objects();
         return -3;
     }
 
@@ -441,6 +449,7 @@ int init_process(void) {
     free(existing_frames);
     if(error) {
         ZF_LOGE("Failed to setup vspace object");
+        init_unlock_objects();
         return -4;
     }
 
@@ -472,9 +481,11 @@ int init_process(void) {
     error = init_set_thread_local_storage(NULL);
     if(error) {
         ZF_LOGE("Failed to set thread local storage");
+        init_unlock_objects();
         return -5;
     }
 
+    init_unlock_objects();
     return 0;
 }
 
@@ -649,6 +660,7 @@ int init_root_task(void) {
         ZF_LOGE("Failed to allocate notification object.");
         return error;
     }
+    init_lock_init(init_lock_notification.cptr);
 
     /**
      * Setup a notification for libsync to use.
@@ -660,7 +672,6 @@ int init_root_task(void) {
         return -9;
     }
     init_objects.sync_notification_cap = sync_notification.cptr;
-
 
     error = init_set_thread_local_storage(NULL);
     if(error) {
