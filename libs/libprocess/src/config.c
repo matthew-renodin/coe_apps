@@ -307,7 +307,7 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
             continue;
         }
 
-        if(handle->running) {
+        if(handle->state != PROCESS_INIT) {
             ZF_LOGW("Cannot modify/configure a running process, continuing");
             continue;
         }
@@ -350,7 +350,7 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
         return -2; /* TODO come up with error codes */
     }
 
-    if(handle->running) {
+    if(handle->state != PROCESS_INIT) {
         ZF_LOGW("Process is already running.");
         return -3; /* TODO come up with error codes */
     }
@@ -400,14 +400,6 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
         return -6;
     }
 
-    if(add_caps) {
-        for(i = 0; i < num_pages; i++) {
-            free_parent_cap(caps[i]); /* We don't need our copy of this cap now */
-        }
-    } else {
-        /* TODO: We need to track if we hold the only caps */
-    }
-
     free(caps);
 
     return 0;
@@ -439,7 +431,7 @@ static int process_map_my_device_pages_optional_caps(process_handle_t *handle,
         return -3; /* TODO come up with error codes */
     }
 
-    if(handle->running) {
+    if(handle->state != PROCESS_INIT) {
         ZF_LOGW("Process is already running.");
         return -4; /* TODO come up with error codes */
     }
@@ -582,7 +574,7 @@ int process_add_device_irq(process_handle_t *handle,
         return -4; /* TODO come up with error codes */
     }
     
-    if(handle->running) {
+    if(handle->state != PROCESS_INIT) {
         ZF_LOGW("Process is already running.");
         return -5; /* TODO come up with error codes */
     }
@@ -670,7 +662,7 @@ int process_add_my_device_irq(process_handle_t *handle,
         return -4; /* TODO come up with error codes */
     }
     
-    if(handle->running) {
+    if(handle->state != PROCESS_INIT) {
         ZF_LOGW("Process is already running.");
         return -5; /* TODO come up with error codes */
     }
@@ -715,9 +707,9 @@ int process_give_untyped_resources(process_handle_t *handle,
         return -2; /* TODO come up with error codes */
     }
 
-    if(handle->running) {
-        ZF_LOGW("Process is already running.");
-        return -3; /* TODO come up with error codes */
+    if(handle->state != PROCESS_INIT) {
+        ZF_LOGW("Process has already been started.");
+        return -3;
     }
 
     ZF_LOGV("Warning:\n"
@@ -726,34 +718,39 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 
     for(seL4_Word i = 0; i < num_objects; i++) {
-    
-        vka_object_t ut;
-        error = vka_alloc_untyped(&init_objects.vka, size_bits, &ut);
+        
+        process_object_t *ut = (process_object_t*)malloc(sizeof(process_object_t));
+        if(ut == NULL) {
+            ZF_LOGE("Failed to malloc an untyped process object");
+            return -4;
+        }
+
+        error = vka_alloc_untyped(&init_objects.vka, size_bits, &ut->obj);
         if(error) {
             ZF_LOGE("Failed to allocate ut object.");
-            return -4;
+            return -5;
         }
     
         UntypedData *ut_data = malloc(sizeof(UntypedData));
         if(ut_data == NULL) {
             ZF_LOGE("Failed to allocate Untyped Data");
-            return -5;
+            return -6;
         }
     
         untyped_data__init(ut_data);
         ut_data->size = size_bits;
-        ut_data->cap = copy_cap_into_next_slot(handle, ut.cptr, seL4_AllRights); 
+        ut_data->cap = copy_cap_into_next_slot(handle, ut->obj.cptr, seL4_AllRights); 
         if(ut_data->cap == seL4_CapNull) {
             ZF_LOGE("Failed to copy ut cap");
-            return -6;
+            return -7;
         }
         
         /* Push the ut data onto the list */
         ut_data->next = handle->init_data.untyped_list_head;
         handle->init_data.untyped_list_head = ut_data;
 
-        free_parent_cap(ut.cptr);
-
+        ut->next = handle->untyped_allocation_list;
+        handle->untyped_allocation_list = ut;
     }
     
     return 0;
@@ -827,7 +824,7 @@ int process_connect_many_to_endpoint(process_handle_t **handle_list,
         return -2;
     }
 
-    free_parent_cap(self_cap);
+    free_parent_cap(self_cap); /* TODO parent tracking ??? */
 
     return 0;
 }
@@ -942,7 +939,7 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
         return -2;
     }
 
-    free_parent_cap(self_cap);
+    free_parent_cap(self_cap); /* TODO parent tracking ??? */
 
     return 0;
 }
@@ -1059,8 +1056,8 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
             continue;
         }
     
-        if(handle->running) {
-            ZF_LOGW("Cannot modify/configure a running process, continuing");
+        if(handle->state != PROCESS_INIT) {
+            ZF_LOGW("Process has already been started, continuing");
             continue;
         }
 
@@ -1161,10 +1158,11 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
             continue;
         }
     
-        if(handle->running) {
-            ZF_LOGW("Cannot modify/configure a running process, continuing");
+        if(handle->state != PROCESS_INIT) {
+            ZF_LOGW("Process has already been started, continuing");
             continue;
         }
+
 
         /* TODO allow executable mem sharing */
         mmap_entry_attr_t attrs = mmap_attr_4k_data;

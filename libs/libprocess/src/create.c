@@ -24,6 +24,17 @@
 #include <process/process.h>
 #include <lockwrapper/lockwrapper.h>
 
+/**
+ * When vspace allocates a page table, it calls this function to tell us about it.
+ */
+void process_allocated_object(void* cookie, vka_object_t obj)
+{
+    process_handle_t *handle = (process_handle_t*)cookie;
+    process_object_t *new_object = (process_object_t*)malloc(sizeof(process_object_t));
+    new_object->obj = obj;
+    new_object->next = handle->vspace_allocation_list;
+    handle->vspace_allocation_list = new_object; 
+}
 
 int process_create(const char *elf_file_name,
                    const char *proc_name,
@@ -48,6 +59,10 @@ int process_create(const char *elf_file_name,
     /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
     handle->attrs = (attr == NULL) ? process_default_attrs : *attr;
  
+    handle->name = proc_name;
+    handle->state = PROCESS_INIT;
+    handle->vspace_allocation_list = NULL;
+    handle->untyped_allocation_list = NULL;
 
     /**
      * Create all the objects that are shared among the threads in a process
@@ -108,6 +123,7 @@ int process_create(const char *elf_file_name,
     }
 #endif
 
+
     /**
      * Setup the new process's virtual memory bookkeeping object
      */
@@ -117,8 +133,8 @@ int process_create(const char *elf_file_name,
                                  &handle->vspace_data,
                                  &init_objects.vka,
                                  handle->page_dir.cptr,
-                                 NULL,  /* Optional function to call when objects are allocated */
-                                 NULL); /* Optional args. */
+                                 process_allocated_object,  /* Optional function to call when objects are allocated */
+                                 (void*)handle); /* Optional args. */
     lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
     if(error) {
         ZF_LOGE("Failed to create child process vspace object");
@@ -270,14 +286,13 @@ int process_create(const char *elf_file_name,
     init_data__init(&handle->init_data);
 
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugNameThread(handle->main_thread->tcb.cptr, proc_name);
+    seL4_DebugNameThread(handle->main_thread->tcb.cptr, handle->name);
 #endif
-    handle->running = 0;
-    handle->name = proc_name;
     handle->init_data.proc_name = (char *)proc_name; /* protobuf uses non const strings */
     handle->init_data.cnode_size_bits = handle->attrs.cnode_size_bits;
     handle->init_data.stack_size_pages = handle->attrs.stack_size_pages; 
     handle->init_data.stack_vaddr = (seL4_Word)handle->main_thread->stack_vaddr;
+
 
     return 0;
 }

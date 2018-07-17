@@ -23,6 +23,37 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 
+#define FREE_INIT_LIST(TYPE, LIST) do { \
+    TYPE *lst = LIST; \
+    while(lst != NULL) { \
+        TYPE *tmp = lst; \
+        lst = lst->next; \
+        free(tmp); \
+    } \
+} while(0) 
+
+static void free_init_data(InitData* data) {
+    FREE_INIT_LIST(UntypedData, data->untyped_list_head);
+    FREE_INIT_LIST(EndpointData, data->ep_list_head);
+    FREE_INIT_LIST(EndpointData, data->notification_list_head);
+    FREE_INIT_LIST(SharedMemoryData, data->shmem_list_head);
+    FREE_INIT_LIST(IrqData, data->irq_list_head);
+
+    {
+        DeviceMemoryData *lst = data->devmem_list_head;
+        while(lst != NULL) {
+            if(lst->caps32 != NULL) free(lst->caps32);
+            if(lst->caps64 != NULL) free(lst->caps64);
+            DeviceMemoryData *tmp = lst;
+            lst = lst->next;
+            free(tmp);
+        }
+    }
+
+    init_data__init(data);
+}
+
+
 static inline int 
 threadsafe_stack_write_constant(lockvspace_t *lockvspace, vspace_t *current_vspace, vspace_t *target_vspace,
                                 vka_t *vka, long value, uintptr_t *initial_stack_pointer){
@@ -69,10 +100,11 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return -2; /* TODO come up with error codes */
     }
 
-    if(handle->running) {
-        ZF_LOGW("Process is already running.");
+    if(handle->state != PROCESS_INIT) {
+        ZF_LOGW("Process has already been started.");
         return -3; /* TODO come up with error codes */
     }
+    handle->state = PROCESS_RUNNING;
 
     handle->init_data.cnode_next_free = handle->cnode_next_free;
 
@@ -85,7 +117,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     ZF_LOGV("Starting process with init data size: %lu", raw_size);
 
     void *init_data_vaddr;
-    reservation_t res; /* TODO: track this reservation to free later */
+    reservation_t res; 
     error = mmap_new_pages_custom(&handle->vspace,
                                   handle->page_dir.cptr,
                                   init_data_len / PAGE_SIZE_4K,
@@ -126,10 +158,11 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
                           PAGE_BITS_4K,
                           &init_objects.vka);
     lockvspace_unlock(&init_objects.vspace, &init_objects.lockvspace);
-    /**
-     * TODO: free all the init data
-     */
 
+    /**
+     * free all the init data);
+     */
+    free_init_data(&handle->init_data);
     
     /**
      * Our child process expects the stack to look like this:
@@ -402,10 +435,6 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
         return error;
     }
 
-    /**
-     * Prevent future changes to the handle
-     */
-    handle->running = 1; 
 
    return 0; 
 }

@@ -219,23 +219,29 @@ int main(void) {
     printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
 
     /**
-     * Try to crash: test vka, vspace locking.
-     */
-    for(int i = 0; i < 4; i++) {
-        thread_attr_t ts_test_attr = thread_1mb_high_priority;
-        ts_test_attr.cpu_affinity = i % 4;
-        thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
-        ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
-
-        err = thread_start(thread_safe_tester, vspace_abuser, NULL);
-        ZF_LOGF_IF(err, "Failed to create thread");
-    }
-
-    /**
      * Test process destruction.
      */
-    //process_destroy(&child1);
-    //process_destroy(&child2);
+    ZF_LOGD("Destroying 1...");
+    process_destroy(&child1);
+    seL4_DebugDumpScheduler();
+
+    ZF_LOGD("Destroying 2...");
+    process_destroy(&child2);
+    seL4_DebugDumpScheduler();
+
+    /**
+     * Try to crash: test vka, vspace locking.
+     */
+//    for(int i = 0; i < 4; i++) {
+//        thread_attr_t ts_test_attr = thread_1mb_high_priority;
+//        ts_test_attr.cpu_affinity = i % 4;
+//        thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
+//        ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
+//
+//        err = thread_start(thread_safe_tester, vspace_abuser, NULL);
+//        ZF_LOGF_IF(err, "Failed to create thread");
+//    }
+
 
     return 0;
 }

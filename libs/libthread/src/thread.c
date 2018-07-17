@@ -329,7 +329,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
 }
 
 
-int thread_destroy_free_handle(thread_handle_t **handle_ref)
+int thread_destroy_free_handle_custom(thread_handle_t **handle_ref,
+                                      vspace_t *vspace)
 {
     UNUSED int error;
 
@@ -346,33 +347,28 @@ int thread_destroy_free_handle(thread_handle_t **handle_ref)
 
     thread_handle_t *handle = *handle_ref;
 
-    if(is_current_thread(handle)) {
-        ZF_LOGE("Cannot destroy currently executing thread");
-        return -3;
-    }
-
     seL4_TCB_Suspend(handle->tcb.cptr);
 
     vka_free_object(&init_objects.vka, &handle->tcb);
     vka_free_object(&init_objects.vka, &handle->sync_notification);
 
-    void * stack_bottom = (void*)((uintptr_t)handle->stack_vaddr -
-                                  (handle->stack_size_pages << PAGE_BITS_4K));
-    vspace_unmap_pages(&init_objects.vspace,
+    void *stack_bottom = (void*)((uintptr_t)handle->stack_vaddr -
+                                 (handle->stack_size_pages << PAGE_BITS_4K));
+    vspace_unmap_pages(vspace,
                        stack_bottom,
                        handle->stack_size_pages,
                        PAGE_BITS_4K,
                        &init_objects.vka);
 
-    vspace_unmap_pages(&init_objects.vspace,
+    vspace_unmap_pages(vspace,
                        handle->ipc_buffer_vaddr,
                        1,
                        PAGE_BITS_4K,
                        &init_objects.vka);
 
 
-    vspace_free_reservation(&init_objects.vspace, handle->stack_res);
-    vspace_free_reservation(&init_objects.vspace, handle->ipc_buffer_res);
+    vspace_free_reservation(vspace, handle->stack_res);
+    vspace_free_reservation(vspace, handle->ipc_buffer_res);
 
     /**
      * Wake any threads wanting to join
@@ -397,4 +393,18 @@ int thread_destroy_free_handle(thread_handle_t **handle_ref)
     return 0;
 }
 
+
+int thread_destroy_free_handle(thread_handle_t **handle_ref) {
+
+    if(handle_ref == NULL || *handle_ref == NULL) {
+        ZF_LOGE("Null thread handle passed");
+        return -2;
+    }
+
+    if(is_current_thread(*handle_ref)) {
+        ZF_LOGE("Cannot destroy currently executing thread");
+        return -3;
+    }
+    return thread_destroy_free_handle_custom(handle_ref, &init_objects.vspace);
+}
 

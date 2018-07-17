@@ -58,8 +58,6 @@ void * worker_thread(void *cookie) {
     notifs[0] = init_lookup_notification("echo1-notif");
     notifs[1] = init_lookup_notification("echo2-notif");
 
-    printf("Shmem locations: %p, %p. Notif caps: %lu, %lu\n", shmem[0], shmem[1], notifs[0], notifs[1]);
-
     if(strcmp(my_name, "child1") == 0) {
         seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
         strcpy(shmem[0], "Hello  brother #2!\n");
@@ -115,7 +113,6 @@ int main(int argc, char **argv) {
     ZF_LOGI("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
     thread_destroy_free_handle(&worker);
 
-    seL4_DebugDumpScheduler();
 
 //    while(1) {
 //        thread_handle_t *tabuser = thread_handle_create(&thread_1mb_high_priority);
@@ -140,8 +137,9 @@ int main(int argc, char **argv) {
  * Avoid main falling off the end of the world.
  */
 void abort(void) {
-    while(1) { 
-        nanosleep(&(struct timespec){.tv_sec=1, .tv_nsec=0}, NULL);
+    while(1) {
+        ZF_LOGD("%s still alive.", my_name);
+        nanosleep(&(struct timespec){.tv_sec=5, .tv_nsec=0}, NULL);
     }
 }
 

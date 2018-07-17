@@ -53,6 +53,20 @@ typedef struct process_attr {
     seL4_CPtr existing_fault_ep;
 } process_attr_t;
 
+/**
+ *
+ */
+typedef struct process_object {
+    struct process_object *next;
+    vka_object_t obj;
+} process_object_t;
+
+
+typedef enum {
+    PROCESS_INIT,
+    PROCESS_RUNNING,
+    PROCESS_DESTROYED
+} process_state_t;
 
 /**
  * @brief Userspace bookeeping for a child process resources.
@@ -60,7 +74,8 @@ typedef struct process_attr {
 typedef struct process_handle {
     /* Only one thread can modify this structure at once */
     sync_recursive_mutex_t process_handle_lock;
-    int running;
+
+    process_state_t state;
 
     const char *name;
 
@@ -80,9 +95,11 @@ typedef struct process_handle {
     vka_object_t vspace_lock_notification;
     vka_object_t vka_lock_notification;
     vka_object_t init_data_lock_notification;
+    process_object_t *untyped_allocation_list;
 
     vspace_t vspace;
     sel4utils_alloc_data_t vspace_data;
+    process_object_t *vspace_allocation_list;
 
     seL4_Word cnode_root_data;
     int cnode_next_free;
