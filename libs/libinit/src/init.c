@@ -275,9 +275,9 @@ int init_process(void) {
     seL4_Word init_data_packed_size = atoi(getenv("INIT_DATA_SIZE"));
 
     ZF_LOGD("env: HEAP_ADDR=%p", morecore_area);
-    ZF_LOGD("env: HEAP_SIZE=%lu", morecore_size);
+    ZF_LOGD("env: HEAP_SIZE=%lu", (unsigned long) morecore_size);
     ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
-    ZF_LOGD("env: INIT_DATA_SIZE=%lu", init_data_packed_size);
+    ZF_LOGD("env: INIT_DATA_SIZE=%lu", (unsigned long) init_data_packed_size);
 
 
     /**
@@ -350,7 +350,7 @@ int init_process(void) {
         error = allocman_utspace_add_uts(init_objects.allocman,
                                          1,
                                          &path,
-                                         &iter->size,
+                                         &iter->size, /* TODO: Is this conversion valid? */
                                          (uintptr_t *)&iter->phys_addr, /* TODO optional! */
                                          ALLOCMAN_UT_KERNEL);
         ZF_LOGF_IF(error, "Failed to add untyped");
@@ -360,8 +360,8 @@ int init_process(void) {
         iter = iter->next;
     }
     ZF_LOGV("Added %lu untyped objects to allocman, totalling: %luK",
-            total_ut_count,
-            total_ut_memory / 1024);
+            (unsigned long) total_ut_count,
+            (unsigned long) total_ut_memory / 1024);
 
     /**
      * Setup an existing frames list.

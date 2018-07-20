@@ -20,7 +20,9 @@
         TYPE *iter = init_objects.init_data->LIST;                              \
         ZF_LOGD_IF(iter == NULL, "No elements in list when looking up.");       \
         while(iter) {                                                           \
-            if(strcmp(name, iter->name) == 0) return (RET)iter->FIELD;          \
+            if(strcmp(name, iter->name) == 0) {                                 \
+                return (RET) ((seL4_Word) iter->FIELD);                         \
+            }                                                                   \
             iter = iter->next;                                                  \
         }                                                                       \
         ZF_LOGD("Unable to locate init data with the given name");              \
@@ -78,8 +80,8 @@ int init_lookup_devmem_info(const char * name, init_devmem_info_t *info)
 
     while(iter) {
         if(strcmp(name, iter->name) == 0) {
-            info->vaddr = (void*)iter->virt_addr;
-            info->paddr = (void*)iter->phys_addr;
+            info->vaddr = (void*) ((seL4_Word) iter->virt_addr);
+            info->paddr = (void*) ((seL4_Word) iter->phys_addr);
             info->size_bits = iter->size_bits;
             info->num_pages = iter->num_pages;
 
