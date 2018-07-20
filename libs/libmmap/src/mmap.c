@@ -153,7 +153,7 @@ int mmap_new_stack_custom(vspace_t *vspace,
                                           *res);
         if(error) {
             ZF_LOGE("Failed to map a page at %lu",
-                    (long unsigned)(*vaddr) + (i << attr->page_size_bits));
+                    (long unsigned)page_addr);
             return -5;
         }
 
@@ -163,7 +163,7 @@ int mmap_new_stack_custom(vspace_t *vspace,
                                            attr);
         if(error) {
             ZF_LOGE("Failed to set the executable permissions for %lu",
-                    (long unsigned)(*vaddr) + (i << attr->page_size_bits));
+                    (long unsigned)page_addr);
             return -6;
         }
     }
@@ -171,8 +171,7 @@ int mmap_new_stack_custom(vspace_t *vspace,
     /**
      * We want to give the stack top back.
      */
-    *vaddr = (void*)((seL4_Word)(*vaddr) + ((num_pages + 1) << attr->page_size_bits));
-
+    *vaddr = addr_at_page(*vaddr, num_pages + 1, attr->page_size_bits);
     return 0;
 }
 
@@ -268,18 +267,18 @@ static int mmap_device_pages_custom(vspace_t *vspace,
         error = vspace_map_pages_at_vaddr(vspace,
                                           &frame_obj.cptr,
                                           (use_existing_caps) ? NULL : &frame_obj.ut,
-                                          (void*)((seL4_Word)(*vaddr)+(i << attr->page_size_bits)),
+                                          addr_at_page(*vaddr, i, attr->page_size_bits),
                                           1, /* map a page at a time */
                                           attr->page_size_bits,
                                           *res);
         if(error) { /* TODO add more sophisticated error checking */
             ZF_LOGE("Failed to map a page at %lu",
-                    (long unsigned)(*vaddr) + (i << attr->page_size_bits));
+                    (long unsigned)addr_at_page(*vaddr, i, attr->page_size_bits));
             return -5;
         }
 
         /**
-         * This is a temporary solution to the fact that sel4utils doesn't
+         * This is a temporary solution to the fact that sel4utils/vspace doesn't
          * expose executable permissions.
          */
         error = remap_fix_executable_perms(frame_obj.cptr,
@@ -287,7 +286,7 @@ static int mmap_device_pages_custom(vspace_t *vspace,
                                            attr);
         if(error) {
             ZF_LOGE("Failed to set the executable permissions for %lu",
-                    (long unsigned)(*vaddr) + (i << attr->page_size_bits));
+                    (long unsigned)addr_at_page(*vaddr, i, attr->page_size_bits));
             return -6;
         }
 

@@ -12,7 +12,7 @@ root_task-y = common libsel4 libmuslc libsel4muslcsys libsel4simple \
               libelf libcpio \
               libprocess libthread libsync libinit libmmap libsel4sync liblockwrapper
 
-root_task-components-y += child_example
+root_task-components-y += child_example dummy
 root_task-components = $(addprefix $(STAGE_BASE)/bin/, $(root_task-components-y))
 
 root_task: export COMPONENTS=${root_task-components}

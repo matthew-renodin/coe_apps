@@ -63,6 +63,7 @@ int process_create(const char *elf_file_name,
     handle->state = PROCESS_INIT;
     handle->vspace_allocation_list = NULL;
     handle->untyped_allocation_list = NULL;
+    handle->shared_objects = NULL;
 
     /**
      * Create all the objects that are shared among the threads in a process

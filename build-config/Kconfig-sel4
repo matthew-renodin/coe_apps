@@ -25,6 +25,7 @@ endmenu
 menu "seL4 Applications"
     source "apps/root_task/Kconfig"
     source "apps/child_example/Kconfig"
+    source "apps/dummy/Kconfig"
 endmenu
 
 menu "seL4 Libraries"

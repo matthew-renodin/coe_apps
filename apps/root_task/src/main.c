@@ -204,13 +204,10 @@ int main(void) {
     ZF_LOGF_IF(err, "Failed to give IRQ device");
 #endif
 
-
     char *argv1[] = { "child1", "echo1-ep" }; 
     char *argv2[] = { "child2", "echo1-ep" };
     err = process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
     err = process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
-
-    
 
     seL4_MessageInfo_t msg = seL4_Recv(child1_ep, NULL);
     printf("Recieved msg from child 1: %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
@@ -242,6 +239,28 @@ int main(void) {
 //        ZF_LOGF_IF(err, "Failed to create thread");
 //    }
 
+    seL4_DebugProcMap();
+
+    /**
+     * Test process destruction for leaks.
+     */
+    while(1) {
+        process_handle_t dummy;
+        err = process_create("dummy", /* File name */
+                             "dummy",        /* Process name */
+                             &process_default_attrs,
+                             &dummy);
+        ZF_LOGF_IF(err, "Failed to create dummy");
+
+        char *argv[] = { "\0" };
+        err = process_run(&dummy, sizeof(argv)/sizeof(argv[0]), argv);
+        ZF_LOGF_IF(err, "Failed to run dummy");
+
+        seL4_Yield();
+        
+        err = process_destroy(&dummy);
+        ZF_LOGF_IF(err, "Failed to destroy dummy");
+    }
 
     return 0;
 }

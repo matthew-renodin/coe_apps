@@ -278,6 +278,7 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
                                             seL4_Word num_procs,
                                             copy_cap_to_proc_func_t copy_cap_to_proc,
                                             seL4_CPtr existing_cap,
+                                            process_shared_objects_t *shobj,
                                             const char *conn_name)
 {
     int error;
@@ -299,6 +300,7 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
         return -3;
     }
 
+
     for(int i = 0; i < num_procs; i++) {
         process_handle_t *handle = handle_list[i];
 
@@ -310,6 +312,18 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
         if(handle->state != PROCESS_INIT) {
             ZF_LOGW("Cannot modify/configure a running process, continuing");
             continue;
+        }
+
+        if(shobj != NULL) {
+            process_shared_objects_ref_t *tmp = handle->shared_objects;
+            handle->shared_objects = malloc(sizeof(process_shared_objects_ref_t));
+            if(handle->shared_objects == NULL) {
+                ZF_LOGE("Failed to malloc shared object ref");
+                handle->shared_objects = tmp;
+                return -4;
+            }
+            handle->shared_objects->next = tmp;
+            handle->shared_objects->ref = shobj;
         }
 
         error = copy_cap_to_proc(handle, existing_cap, perms_list[i], conn_name);
@@ -331,7 +345,7 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
                                                   const char* device_name,
                                                   bool add_caps)
 {
-    int error, i;
+    int error;
 
     /* TODO: Implement sync for init objects */
     if(!init_check_initialized()) {
@@ -779,33 +793,38 @@ int process_connect_many_to_self_endpoint(process_handle_t **handle_list,
         return -1;
     }
 
-    vka_object_t ep;
+    vka_object_t ep; /* TODO for now we leak the memory if parent wants to connect */
     error = vka_alloc_endpoint(&init_objects.vka, &ep);
     if(error) {
         ZF_LOGE("Failed to allocate endpoint object.");
         return -2;
     }
 
+    *new_self_cap = ep.cptr;
+
     error = connect_many_to_existing_generic(handle_list,
                                              perms_list,
                                              num_procs,
                                              copy_ep_to_proc,
                                              ep.cptr,
+                                             NULL,
                                              conn_name);
+    if(error) {
+        ZF_LOGE("Failed to connect");
+        return -5;
+    }
 
-    *new_self_cap = ep.cptr;
     return 0;
 }
 
 
 
 int process_connect_many_to_endpoint(process_handle_t **handle_list,
-                                          seL4_CapRights_t *perms_list,
-                                          seL4_Word num_procs,
-                                          const char *conn_name)
+                                     seL4_CapRights_t *perms_list,
+                                     seL4_Word num_procs,
+                                     const char *conn_name)
 {
     int error;
-    seL4_CPtr self_cap;
 
     /* TODO: Implement sync for init objects */
     if(!init_check_initialized()) {
@@ -814,17 +833,47 @@ int process_connect_many_to_endpoint(process_handle_t **handle_list,
         return -1;
     }
 
-    error = process_connect_many_to_self_endpoint(handle_list,
-                                                  perms_list,
-                                                  num_procs,
-                                                  conn_name,
-                                                  &self_cap);
-    if(error) {
-        ZF_LOGE("Failed to connect many");
+    vka_object_t *ep = malloc(sizeof(vka_object_t));
+    if(ep == NULL) {
+        ZF_LOGE("Failed to malloc ep data");
         return -2;
     }
 
-    free_parent_cap(self_cap); /* TODO parent tracking ??? */
+    process_shared_objects_t *new_obj = malloc(sizeof(process_shared_objects_t));
+    if(new_obj == NULL) {
+        ZF_LOGE("Failed to malloc shared object data");
+        free(ep);
+        return -3;
+    }
+
+    error = vka_alloc_endpoint(&init_objects.vka, ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate endpoint object.");
+        free(ep);
+        free(new_obj);
+        return -4;
+    }
+
+    /**
+     * Even though we don't return it, we actually retain a cap to the endpoint for bookkeeping.
+     */
+    new_obj->ref_count = num_procs;
+    new_obj->obj_list = ep;
+    new_obj->num_objs = 1; 
+
+    error = connect_many_to_existing_generic(handle_list,
+                                             perms_list,
+                                             num_procs,
+                                             copy_ep_to_proc,
+                                             ep->cptr,
+                                             new_obj,
+                                             conn_name);
+    if(error) {
+        ZF_LOGE("Failed to connect");
+        free(ep);
+        free(new_obj);
+        return -5;
+    }
 
     return 0;
 }
@@ -841,6 +890,7 @@ int process_connect_to_existing_endpoint(process_handle_t *handle,
                                             1,
                                             copy_ep_to_proc,
                                             existing_cap,
+                                            NULL,
                                             conn_name);
 }
 
@@ -908,6 +958,7 @@ int process_connect_many_to_self_notification(process_handle_t **handle_list,
                                              num_procs,
                                              copy_notification_to_proc,
                                              ep.cptr,
+                                             NULL,
                                              conn_name);
 
     *new_self_cap = ep.cptr;
@@ -920,7 +971,6 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
                                          const char *conn_name)
 {
     int error;
-    seL4_CPtr self_cap;
 
     /* TODO: Implement sync for init objects */
     if(!init_check_initialized()) {
@@ -929,17 +979,47 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
         return -1;
     }
 
-    error = process_connect_many_to_self_notification(handle_list,
-                                                      perms_list,
-                                                      num_procs,
-                                                      conn_name,
-                                                      &self_cap);
-    if(error) {
-        ZF_LOGE("Failed to connect many");
+    vka_object_t *ep = malloc(sizeof(vka_object_t));
+    if(ep == NULL) {
+        ZF_LOGE("Failed to malloc ep data");
         return -2;
     }
 
-    free_parent_cap(self_cap); /* TODO parent tracking ??? */
+    process_shared_objects_t *new_obj = malloc(sizeof(process_shared_objects_t));
+    if(new_obj == NULL) {
+        ZF_LOGE("Failed to malloc shared object data");
+        free(ep);
+        return -3;
+    }
+
+    error = vka_alloc_notification(&init_objects.vka, ep);
+    if(error) {
+        ZF_LOGE("Failed to allocate endpoint object.");
+        free(ep);
+        free(new_obj);
+        return -4;
+    }
+
+    /**
+     * Even though we don't return it, we actually retain a cap to the endpoint for bookkeeping.
+     */
+    new_obj->ref_count = num_procs;
+    new_obj->obj_list = ep;
+    new_obj->num_objs = 1; 
+
+    error = connect_many_to_existing_generic(handle_list,
+                                             perms_list,
+                                             num_procs,
+                                             copy_notification_to_proc,
+                                             ep->cptr,
+                                             new_obj,
+                                             conn_name);
+    if(error) {
+        ZF_LOGE("Failed to connect");
+        free(ep);
+        free(new_obj);
+        return -5;
+    }
 
     return 0;
 }
@@ -955,6 +1035,7 @@ int process_connect_to_existing_notification(process_handle_t *handle,
                                             1,
                                             copy_notification_to_proc,
                                             existing_cap,
+                                            NULL,
                                             conn_name);
 }
 
@@ -1031,7 +1112,7 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
     mmap_entry_attr_t attrs = mmap_attr_4k_data;
     attrs.readable = 1;
     attrs.writable = 1;
-    reservation_t res; /* TODO: track this reservation to free later */
+    reservation_t res;
     error = mmap_new_pages_custom(&init_objects.vspace,
                                   init_objects.page_dir_cap,
                                   num_pages,
@@ -1084,7 +1165,7 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
 
 
         void *vaddr;
-        reservation_t res; /* TODO: track this reservation to free later */
+        reservation_t res; 
         error = mmap_existing_pages_custom(&handle->vspace,
                                            handle->page_dir.cptr,
                                            num_pages,
@@ -1141,27 +1222,81 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
     if(caps == NULL) {
         ZF_LOGE("Failed to malloc temporary space for page caps");
-        return -4;
+        goto failed_caps;
     }
+
+    process_shared_objects_t *new_objs = malloc(sizeof(process_shared_objects_t));
+    if(new_objs == NULL) {
+        ZF_LOGE("Failed to malloc shared objects struct");
+        goto failed_new_objs;
+    }
+
+    new_objs->obj_list = malloc(sizeof(vka_object_t)*num_pages);
+    if(new_objs->obj_list == NULL) {
+        ZF_LOGE("Failed to malloc bookkeeping space for pages");
+        goto failed_obj_list;
+    }
+
+
+    for(i = 0; i < num_pages; i++) {
+        error = vka_alloc_frame(&init_objects.vka, PAGE_BITS_4K, &new_objs->obj_list[i]);
+        if(error) {
+            ZF_LOGE("Failed to allocate a page of memory from vka");
+            goto failed;
+        }
+        caps[i] = new_objs->obj_list[i].cptr;
+    }
+
+    new_objs->ref_count = num_procs;
+    new_objs->num_objs = num_pages;
 
 
     /**
      * Then map the pages into the list of children
      */
-    bool pages_created = false;
-
     for(i = 0; i < num_procs; i++) {
         process_handle_t *handle = handle_list[i];
 
         if(handle == NULL) {
             ZF_LOGW("Null process handle in list, continuing");
+            new_objs->ref_count--;
             continue;
         }
     
         if(handle->state != PROCESS_INIT) {
             ZF_LOGW("Process has already been started, continuing");
+            new_objs->ref_count--;
             continue;
         }
+
+        /**
+         * We need to copy the caps to map them again
+         * (We also don't map the original caps).
+         * This overwrites the caps array.
+         */
+        for(j = 0; j < num_pages; j++) {
+            cspacepath_t path1, path2;
+            vka_cspace_make_path(&init_objects.vka, caps[j], &path1);
+            vka_cspace_alloc_path(&init_objects.vka, &path2);
+            error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
+            if(error) {
+                ZF_LOGE("Failed to copy cap for shared page.");
+                goto failed; 
+            }
+            caps[j] = path2.capPtr;
+        }
+
+        /**
+         * Insert shared obj bookkeeping for this process handle
+         */
+        process_shared_objects_ref_t *sh_obj_list_old = handle->shared_objects;
+        handle->shared_objects = malloc(sizeof(process_shared_objects_ref_t));
+        if(handle->shared_objects == NULL) {
+            ZF_LOGE("Failed to malloc memory for a shared object reference");
+            goto failed;
+        }
+        handle->shared_objects->next = sh_obj_list_old;
+        handle->shared_objects->ref = new_objs;
 
 
         /* TODO allow executable mem sharing */
@@ -1171,73 +1306,40 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
 
         void *vaddr;
 
-        if(!pages_created) {
-            pages_created = true;
-
-            /**
-             * For the first process we make new pages.
-             */
-            reservation_t res; /* TODO: track this reservation to free later */
-            error = mmap_new_pages_custom(&handle->vspace,
-                                          handle->page_dir.cptr,
-                                          num_pages,
-                                          &attrs,
-                                          caps,
-                                          &vaddr,
-                                          &res);
-            if(error) {
-                ZF_LOGE("Failed to map new pages into child");
-                free(caps);
-                return -5;
-            }
-
-        } else {
-
-            /**
-             * We need to copy the caps to map them again
-             * This overwrites the caps array.
-             */
-            for(j = 0; j < num_pages; j++) {
-                cspacepath_t path1, path2;
-                vka_cspace_make_path(&init_objects.vka, caps[j], &path1);
-                vka_cspace_alloc_path(&init_objects.vka, &path2);
-                error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
-                if(error) {
-                    ZF_LOGE("Failed to copy cap for shared page.");
-                    free(caps);
-                    return -6;
-                }
-                caps[j] = path2.capPtr;
-            } 
-    
-    
-            reservation_t res; /* TODO: track this reservation to free later */
-            error = mmap_existing_pages_custom(&handle->vspace,
-                                               handle->page_dir.cptr,
-                                               num_pages,
-                                               &attrs,
-                                               caps,
-                                               &vaddr,
-                                               &res);
-            if(error) {
-                ZF_LOGE("Failed to share pages to child process");
-                free(caps);
-                return -7;
-            }
+        reservation_t res; 
+        error = mmap_existing_pages_custom(&handle->vspace,
+                                           handle->page_dir.cptr,
+                                           num_pages,
+                                           &attrs,
+                                           caps,
+                                           &vaddr,
+                                           &res);
+        if(error) {
+            ZF_LOGE("Failed to share pages to child process");
+            goto failed;
         }
-
+        
         error = copy_shmem_to_proc(handle, vaddr, num_pages, conn_name);
         if(error) {
             ZF_LOGE("Failed to copy shemem data to child");
-            free(caps);
-            return -8;
+            goto failed;
         }
 
     }
 
-
-    free(caps);
     return 0;
+
+failed:
+    /**
+     * TODO: free vka objs, free each proc sh obj ref
+     */
+failed_obj_list:
+    free(new_objs->obj_list);
+failed_new_objs:
+    free(new_objs);
+failed_caps:
+    free(caps);
+    return -1;
 }
 
 

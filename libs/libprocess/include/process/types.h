@@ -37,6 +37,8 @@
 
 #include <init/init.h>
 #include <thread/thread.h>
+
+
 /**
  *
  */
@@ -53,6 +55,21 @@ typedef struct process_attr {
     seL4_CPtr existing_fault_ep;
 } process_attr_t;
 
+
+
+typedef struct process_shared_objects {
+    seL4_Word ref_count;
+    vka_object_t *obj_list;
+    seL4_Word num_objs;
+} process_shared_objects_t;
+
+
+typedef struct process_shared_objects_ref {
+    struct process_shared_objects_ref *next;
+    process_shared_objects_t *ref;    
+} process_shared_objects_ref_t;
+
+
 /**
  *
  */
@@ -60,6 +77,7 @@ typedef struct process_object {
     struct process_object *next;
     vka_object_t obj;
 } process_object_t;
+
 
 
 typedef enum {
@@ -103,11 +121,13 @@ typedef struct process_handle {
 
     seL4_Word cnode_root_data;
     int cnode_next_free;
+    
+    process_object_t *shared_ep_cap_copies;
+    process_shared_objects_ref_t *shared_objects;
 
     thread_handle_t *main_thread;
 
     InitData init_data;
-
 
 } process_handle_t;
 

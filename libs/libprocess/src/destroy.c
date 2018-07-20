@@ -37,7 +37,7 @@ static void free_process_objects(process_object_t* list) {
 
 int process_destroy(process_handle_t *handle)
 {
-     int error;
+     int error, i;
 
     /* TODO: Implement sync for init objects */
     if(!init_objects.initialized) {
@@ -60,7 +60,7 @@ int process_destroy(process_handle_t *handle)
     error = thread_destroy_free_handle_custom(&handle->main_thread, &handle->vspace);
     ZF_LOGE_IF(error, "Failed to destroy thread");
     
-    for(int i = 0; i < BIT(handle->attrs.cnode_size_bits); i++) {
+    for(i = 0; i < BIT(handle->attrs.cnode_size_bits); i++) {
         cspacepath_t path;
         path.root = handle->cnode.cptr;
         path.capPtr = i;
@@ -98,7 +98,32 @@ int process_destroy(process_handle_t *handle)
      * TODO: We leave endpoints and notifications alone for now.
      * This is ultimately a memory leak, but it's pretty small overall.
      */
-    
+
+
+    /**
+     * Free the shared objects, if no one else is using them
+     */
+    while(handle->shared_objects != NULL) {
+        process_shared_objects_t *shobj = handle->shared_objects->ref;
+
+        if(shobj == NULL) {
+            ZF_LOGE("Invalid shared object reference");
+            break;
+        }
+        
+        if(--shobj->ref_count == 0) {
+            for(i = 0; i < shobj->num_objs; i++) {
+                vka_free_object(&init_objects.vka, &shobj->obj_list[i]);
+            }
+            free(shobj->obj_list);
+            free(shobj);
+        }
+
+        process_shared_objects_ref_t *tmp = handle->shared_objects;
+        handle->shared_objects = handle->shared_objects->next;
+        free(tmp);
+    }
+
 
     /**
      * Free all the untypeds

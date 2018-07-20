@@ -1,0 +1,15 @@
+###############################################################################
+# Dummy - Kbuild
+#
+#
+###############################################################################
+
+apps-$(CONFIG_APP_DUMMY) += dummy
+
+dummy-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
+          libsel4vka libsel4allocman libsel4simple libutils \
+          libsel4utils libsel4debug libsel4vspace \
+          libplatsupport libsel4platsupport libcpio libelf \
+          libprocess libthread libsync libinit libmmap libsel4sync liblockwrapper
+
+dummy: $(dummy-y)
