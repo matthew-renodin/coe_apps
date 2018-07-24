@@ -213,6 +213,7 @@ int process_create(const char *elf_file_name,
     cspacepath_t dst, src;
     dst.root = handle->cnode.cptr;
     dst.capDepth = handle->attrs.cnode_size_bits;
+    ZF_LOGI("Address of src %p", src);
     
     dst.capPtr = INIT_CHILD_CNODE_SLOT;
     vka_cspace_make_path(&init_objects.vka, handle->cnode.cptr, &src);

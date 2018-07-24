@@ -79,12 +79,13 @@ typedef struct process_object {
 } process_object_t;
 
 
-
 typedef enum {
     PROCESS_INIT,
     PROCESS_RUNNING,
     PROCESS_DESTROYED
 } process_state_t;
+
+
 
 /**
  * @brief Userspace bookeeping for a child process resources.
@@ -122,7 +123,6 @@ typedef struct process_handle {
     seL4_Word cnode_root_data;
     int cnode_next_free;
     
-    process_object_t *shared_ep_cap_copies;
     process_shared_objects_ref_t *shared_objects;
 
     thread_handle_t *main_thread;
@@ -132,3 +132,36 @@ typedef struct process_handle {
 } process_handle_t;
 
 
+typedef enum {
+    PROCESS_ENDPOINT,
+    PROCESS_NOTIFICATION,
+    PROCESS_SHARED_MEMORY
+} process_connect_medium_t;
+
+typedef struct process_connection {
+    process_handle_t *handle;
+    seL4_CapRights_t perms;
+} process_connection_t;
+
+
+typedef struct process_connect_attrs {
+    const char *name;
+
+    process_connection_t *procs;
+    seL4_Word num_procs;
+
+    process_connect_medium_t type;
+
+    /* Optional, only used for shmem */
+    seL4_Word num_shmem_pages;
+
+    /* Optional, use an existing ep/notification instead of a new one */
+    seL4_CPtr existing_cap;
+
+} process_connect_attrs_t;
+
+typedef struct process_connect_result_t {
+    /* */
+    seL4_CPtr parent_cap;
+    void *shmem_addr;
+}
