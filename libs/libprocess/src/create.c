@@ -24,6 +24,9 @@
 #include <process/process.h>
 #include <lockwrapper/lockwrapper.h>
 
+int process_lib_lock_initialized = 0;
+mutex_t process_lib_lock = {0};
+
 /**
  * When vspace allocates a page table, it calls this function to tell us about it.
  */

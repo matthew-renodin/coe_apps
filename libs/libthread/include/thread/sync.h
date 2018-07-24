@@ -29,14 +29,18 @@ static inline void libthread_lock_init() {
     }
 }
 
-#define libthread_lock_acquire() \
-    libthread_lock_init(); \
-    ZF_LOGF_IF(thread_lib_lock.type == LOCK_NONE, "Bad lock"); \
-    mutex_lock(&thread_lib_lock)
+static inline void 
+libthread_lock_acquire() {
+    libthread_lock_init();
+    mutex_lock(&thread_lib_lock);
+}
+    
 
-#define libthread_lock_release() \
-    ZF_LOGF_IF(thread_lib_lock.type == LOCK_NONE, "Bad lock"); \
-    mutex_unlock(&thread_lib_lock); \
+static inline void 
+libthread_lock_release()
+{
+    mutex_unlock(&thread_lib_lock);
+}
 
 static inline bool holding_libthread_lock() {
     libthread_lock_init();
@@ -85,7 +89,3 @@ libthread_epilogue:
 #define libthread_epilogue() \
 libthread_custom_epilogue() \
     libthread_return_value(_libthread_status)
-
-/******************************************************************************
- *  Convenience Functions
- *****************************************************************************/
