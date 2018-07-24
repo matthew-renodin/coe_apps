@@ -70,7 +70,7 @@ void thread_set_name(thread_handle_t *handle, const char *name);
  *
  * @return The ID
  */
-seL4_Word thread_get_id();
+int thread_get_id();
 
 /**
  * @brief Get the sync notification of the currently executing thread.
