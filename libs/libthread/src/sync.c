@@ -26,6 +26,8 @@
 #include <atomic_sync/sync.h>
 #include <atomic_sync/helpers.h>
 
+#define NO_THREAD -1
+
 int mutex_create(mutex_t *mutex, lock_type_t type) {
     if(mutex_set_type(mutex, LOCK_NONE) != LOCK_SUCCESS) { return LOCK_ERROR; }
 
@@ -72,7 +74,7 @@ int mutex_fast_init(mutex_t *mutex){
 int mutex_fast_recursive_init(mutex_t *mutex) {
     if(mutex_set_type(mutex, LOCK_RECURSIVE_USERSPACE) != LOCK_SUCCESS) { return LOCK_ERROR; }
     __atomic_store_n(&(mutex->fast_recursive_lock.value), 0, __ATOMIC_SEQ_CST);
-    __atomic_store_n(&(mutex->fast_recursive_lock.holder), 0, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&(mutex->fast_recursive_lock.holder), NO_THREAD, __ATOMIC_SEQ_CST);
     return LOCK_SUCCESS;
 }
 
@@ -106,10 +108,14 @@ mutex_trylock(mutex_t *mutex){
         }
 
     case LOCK_RECURSIVE_USERSPACE: {
-        seL4_Word nil_holder = (seL4_Word) NULL;
-        seL4_Word expected_holder = thread_get_id();
-        if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &nil_holder, thread_get_id()) ||
-            atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id())) {
+        int nil_holder = NO_THREAD;
+        int expected_holder = thread_get_id();
+        if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &nil_holder, thread_get_id())) {
+            assert(mutex->fast_recursive_lock.value == 0);
+            status = sync_atomic_increment_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
+            return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
+        }
+        else if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id())) {
             status = sync_atomic_increment_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
             return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
         } else {
@@ -126,7 +132,7 @@ mutex_trylock(mutex_t *mutex){
         return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
 
     default:
-        ZF_LOGF("Invalid lock type selected");
+        ZF_LOGF("Invalid lock type selected: %d", mutex->type);
         return LOCK_ERROR;
     }
 }
@@ -161,10 +167,10 @@ int mutex_unlock(mutex_t *mutex) {
         return LOCK_ERROR;
 
     case LOCK_RECURSIVE_USERSPACE: {
-        seL4_Word expected_holder = thread_get_id();
+        int expected_holder = thread_get_id();
         if(atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id())) {
             if(atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 0)) {
-                atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id());
+                atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, NO_THREAD);
                 return LOCK_SUCCESS;
             } else {
                 status = sync_atomic_decrement_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);

@@ -16,6 +16,7 @@
 #include <mmap/mmap.h>
 #include <init/init.h>
 
+#include <thread/sync.h>
 
 const thread_attr_t thread_1mb_high_priority = {
     .stack_size_pages = 256,
@@ -23,27 +24,24 @@ const thread_attr_t thread_1mb_high_priority = {
     .cpu_affinity = 0, /* TODO is this sane? */
 };
 
+int thread_lib_lock_initialized = 0;
+mutex_t thread_lib_lock = {0};
 
 static inline bool is_current_thread(thread_handle_t *handle) {
     return handle == (thread_handle_t*)init_get_thread_local_storage();
 }
 
 
-
 thread_handle_t *thread_handle_create(const thread_attr_t *attr)
 {
-    UNUSED int error;
+    libthread_prologue(thread_handle_t *, NULL);
 
-    if(!init_check_initialized()) {
-        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to setup.");
-        return NULL;
-    }
-
-    if(attr == NULL) {
-        ZF_LOGE("Null thread attr passed into thread_handle_create");
-        return NULL;
-    }
+    libthread_guard(!init_check_initialized(), NULL, libthread_epilogue,
+                    "Init objects (vka, vspace) have not been setup.\n"
+                    "Run init_process or init_root_task to setup.");
+    
+    libthread_guard(attr == NULL, NULL, libthread_epilogue,
+                    "Null thread attr passed into thread_handle_create");
 
     thread_handle_t *handle = thread_handle_create_custom(init_objects.cnode_cap,
                                                           0,
@@ -51,10 +49,8 @@ thread_handle_t *thread_handle_create(const thread_attr_t *attr)
                                                           init_objects.page_dir_cap,
                                                           &init_objects.vspace,
                                                           attr);
-    if(handle == NULL) {
-        ZF_LOGE("Failed to create thread handle");
-        return NULL;
-    }
+    libthread_guard(handle == NULL, NULL, libthread_epilogue,
+                    "Failed to create thread handle");
 
     static int tid_counter = 0;
     handle->thread_id = ++tid_counter;
@@ -66,8 +62,10 @@ thread_handle_t *thread_handle_create(const thread_attr_t *attr)
     free(new_name);
 #endif 
 
-    return handle;
+    libthread_return_value(handle);
+    libthread_epilogue();
 }
+
 
 thread_handle_t *thread_handle_get_current()
 {
@@ -84,6 +82,7 @@ static void thread_init_routine(thread_handle_t *handle,
                                 void *(*start_routine) (void *),
                                 void *arg)
 {
+    /* Check this before we even go for the lock */
     if(start_routine == NULL) {
         ZF_LOGF("Invalid thread start function");
         return;
@@ -93,14 +92,28 @@ static void thread_init_routine(thread_handle_t *handle,
     if(error) {
         ZF_LOGF("Failed to set thread local storage");
     }
+
+    libthread_lock_acquire();
+    libthread_condition_variable_init(handle);
+
+    /* TODO: Set this more places, assert */
+    thread_state_t expected = THREAD_INIT;
+    atomic_compare_exchange(&handle->state, &expected, THREAD_RUNNING);
+
+    libthread_lock_release();
     
     /**
      * Take the return value of the thread and send it to the joining thread
      */
     handle->returned_value = start_routine(arg);
-    seL4_Signal(handle->join_notification.cptr);
     
+    libthread_lock_acquire();
     ZF_LOGD("Thread finished executing");
+    expected = THREAD_RUNNING;
+    atomic_compare_exchange(&handle->state, &expected, THREAD_DESTROYED);
+    cond_signalAll(&handle->join_condition);
+    libthread_lock_release();
+    
     while(1) {
         /* TODO */
         seL4_Sleep(5000);
@@ -109,15 +122,11 @@ static void thread_init_routine(thread_handle_t *handle,
 }
 
 
-
 int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void *arg) {
-    int error;
+    libthread_prologue(int, 0);
     seL4_UserContext regs = {0};
 
-    if(handle == NULL) {
-        ZF_LOGE("Null thread handle passed into thread_start");
-        return -1;
-    }
+    libthread_guard(handle == NULL, -1, libthread_epilogue, "Null thread handle passed into thread_start");
 
     /**
      * ARM requires 8-byte alignment
@@ -155,21 +164,18 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
 
 #endif
 
-    error = sel4utils_arch_init_context(thread_init_routine,
-                                        (void*)initial_stack_pointer,
-                                        &regs);
-    if(error) {
-        ZF_LOGE("Failed to initialize thread registers");
-        return -2;
-    }
+    libthread_set_status(sel4utils_arch_init_context(thread_init_routine,
+                                                     (void*)initial_stack_pointer,
+                                                     &regs));
+    libthread_guard(libthread_get_status(), -2, libthread_epilogue,
+                    "Failed to initialize thread registers");
 
-    error = seL4_TCB_WriteRegisters(handle->tcb.cptr, 1, 0, sizeof(regs)/sizeof(seL4_Word), &regs);
-    if(error) {
-        ZF_LOGE("Failed to write tcb registers");
-        return -3;
-    }
+    libthread_set_status(seL4_TCB_WriteRegisters(handle->tcb.cptr, 1, 0, sizeof(regs)/sizeof(seL4_Word), &regs));
+    libthread_guard(libthread_get_status(), -3, libthread_epilogue,
+                    "Failed to write tcb registers");
 
-    return 0;
+    libthread_return_success();
+    libthread_epilogue();
 }
 
 
@@ -183,6 +189,7 @@ seL4_Word thread_get_id()
     return handle->thread_id;
 }
 
+
 seL4_CPtr thread_get_sync_notification()
 {
     thread_handle_t *handle = (thread_handle_t*)init_get_thread_local_storage();
@@ -194,22 +201,54 @@ seL4_CPtr thread_get_sync_notification()
 }
 
 
-
 void *thread_join(thread_handle_t *handle)
 {
-    if(handle == NULL) {
-        ZF_LOGE("Null thread handle passed");
-        return NULL;
+    ZF_LOGF_IF(holding_libthread_lock(), 
+               "Trying to join while already holding libthread lock "
+               "will cause a deadlock situation in libthread. Abort.\n");
+    
+    libthread_prologue(void *, NULL);
+    libthread_guard(handle == NULL, NULL, libthread_epilogue, "Null thread handle passed");
+
+    libthread_condition_variable_init(handle);
+    if(handle->state != THREAD_DESTROYED ) {
+        cond_wait(&handle->join_condition);
+        libthread_guard(handle == NULL, NULL, libthread_epilogue, "Thread handle freed before return");
     }
+    
+    /* Save off returned value before letting go of lock */
+    libthread_set_status(handle->returned_value);
+    libthread_return_value(libthread_get_status());
+    
+    libthread_epilogue();
+}
 
-    seL4_Wait(handle->join_notification.cptr, NULL);
+/**
+ * Convenience functions to unmap/free the stack and IPC Buffer
+ * Assumes that libthread lock is held, handle is not null,
+ *  init_objects are properly initialized, and that 
+ *  the stack/buffer to be freed is valid
+ */
+static inline void thread_unmap_stack_unsafe(thread_handle_t *handle, vspace_t* vspace) {
+    void *stack_bottom = (void*)((uintptr_t)handle->stack_vaddr -
+                                 (handle->stack_size_pages << PAGE_BITS_4K));
+    vspace_unmap_pages(vspace,
+                       stack_bottom,
+                       handle->stack_size_pages,
+                       PAGE_BITS_4K,
+                       &init_objects.vka);
+    vspace_free_reservation(vspace, handle->stack_res);
+}
 
-    /**
-     * Wake up the next guy in the join queue.
-     */
-    seL4_Signal(handle->join_notification.cptr);
 
-    return handle->returned_value;
+static inline void thread_unmap_ipc_buffer_unsafe(thread_handle_t *handle, vspace_t* vspace) {
+    vspace_unmap_pages(vspace,
+                       handle->ipc_buffer_vaddr,
+                       1,
+                       PAGE_BITS_4K,
+                       &init_objects.vka);
+
+    vspace_free_reservation(vspace, handle->ipc_buffer_res);
 }
 
 
@@ -220,52 +259,40 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                              vspace_t *vspace,
                                              const thread_attr_t *attr)
 {
+    libthread_prologue(thread_handle_t *, NULL);
     int error;
 
-    /* TODO: implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to setup.");
-        return NULL;
-    }
+    libthread_guard(!init_check_initialized(), NULL, libthread_epilogue,
+                    "Init objects (vka, vspace) have not been setup.\n"
+                    "Run init_process or init_root_task to setup.");
 
-    if(attr == NULL) {
-        ZF_LOGE("Null thread attr passed into thread_handle_create_custom");
-        return NULL;
-    }
+    libthread_guard(attr == NULL, NULL, libthread_epilogue,
+                    "Null thread attr passed into thread_handle_create_custom");
 
     thread_handle_t *handle = calloc(sizeof(thread_handle_t), 1);
-    if(handle == NULL) {
-        ZF_LOGE("Failed to malloc thread handle");
-        return NULL;
-    }
+    libthread_guard(handle == NULL, NULL, libthread_epilogue,
+                    "Failed to malloc thread handle");
     
     /**
      * Create the tcb
      */
     error = vka_alloc_tcb(&init_objects.vka, &handle->tcb);
-    if(error) {
-        ZF_LOGW("Failed to allocate tcb.");
-        return NULL;
-    }
+    libthread_guard(error, NULL, tcb_fail,
+                    "Failed to allocate tcb.");
     
     /**
      * Create a notification object for libsync
      */
     error = vka_alloc_notification(&init_objects.vka, &handle->sync_notification);
-    if(error) {
-        ZF_LOGW("Failed to allocate notification ep.");
-        return NULL;
-    }
+    libthread_guard(error, NULL, sync_fail,
+                    "Failed to allocate notification ep.");
     
     /**
      * Create an endpoint for the parent thread to wait on the child.
      */
     error = vka_alloc_notification(&init_objects.vka, &handle->join_notification);
-    if(error) {
-        ZF_LOGW("Failed to allocate notification ep.");
-        return NULL;
-    }
+    libthread_guard(error, NULL, join_fail,
+                    "Failed to allocate notification ep.");
 
     /**
      * Allocate the stack somewhere (reserves an extra guard page)
@@ -276,10 +303,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                   handle->stack_size_pages,
                                   &handle->stack_vaddr,
                                   &handle->stack_res);
-    if(error) {
-        ZF_LOGW("Failed to allocate stack");
-        return NULL;
-    }
+    libthread_guard(error, NULL, stack_fail,
+                    "Failed to allocate stack");
 
     /**
      * Allocate an IPC buffer
@@ -291,10 +316,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                   &handle->ipc_buffer_cap,
                                   &handle->ipc_buffer_vaddr,
                                   &handle->ipc_buffer_res);
-    if(error) {
-        ZF_LOGW("Failed to allocate ipc buffer");
-        return NULL;
-    }
+    libthread_guard(error, NULL, ipc_fail,
+                    "Failed to allocate ipc buffer");
 
     /**
      * Configure our tcb with the new resources
@@ -307,43 +330,46 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
                                0,
                                (seL4_Word)handle->ipc_buffer_vaddr,
                                handle->ipc_buffer_cap);
-    if(error) {
-        ZF_LOGW("Failed to configure tcb");
-        return NULL;
-    }                 
+    libthread_guard(error, NULL, tcb_configure_fail,
+                    "Failed to configure tcb");           
 
     error = seL4_TCB_SetPriority(handle->tcb.cptr, init_objects.tcb_cap, attr->priority);
-    if(error) {
-        ZF_LOGW("Failed to set priority");
-    }
+    ZF_LOGW_IF(error, "Failed to set priority");
    
 #ifdef ENABLE_SMP_SUPPORT 
     error = seL4_TCB_SetAffinity(handle->tcb.cptr, attr->cpu_affinity);
-    if(error) {
-        ZF_LOGW("Failed to set affinity");
-    }
+    ZF_LOGW_IF(error, "Failed to set affinity");
 #endif
-
-    return handle;
-
+    libthread_return_value(handle);
+    tcb_configure_fail:
+        thread_unmap_ipc_buffer_unsafe(handle, vspace);
+    ipc_fail:
+        thread_unmap_stack_unsafe(handle, vspace);
+    stack_fail:
+        vka_free_object(&init_objects.vka, &handle->join_notification);
+    join_fail:
+        vka_free_object(&init_objects.vka, &handle->sync_notification);
+    sync_fail:
+        vka_free_object(&init_objects.vka, &handle->tcb);
+    tcb_fail:
+        free(handle);
+    libthread_epilogue();
 }
 
 
 int thread_destroy_free_handle_custom(thread_handle_t **handle_ref,
                                       vspace_t *vspace)
 {
+    libthread_prologue(int, 0);
     UNUSED int error;
 
-    if(!init_check_initialized()) {
-        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to setup.");
-        return -1;
-    }
+    libthread_guard(!init_check_initialized(), -1, libthread_epilogue,
+                    "Init objects (vka, vspace) have not been setup.\n"
+                    "Run init_process or init_root_task to setup.");
 
-    if(handle_ref == NULL || *handle_ref == NULL) {
-        ZF_LOGE("Null thread handle passed");
-        return -2;
-    }
+    libthread_guard(handle_ref == NULL || *handle_ref == NULL,
+                    -2, libthread_epilogue,
+                    "Null thread handle passed");
 
     thread_handle_t *handle = *handle_ref;
 
@@ -352,37 +378,18 @@ int thread_destroy_free_handle_custom(thread_handle_t **handle_ref,
     vka_free_object(&init_objects.vka, &handle->tcb);
     vka_free_object(&init_objects.vka, &handle->sync_notification);
 
-    void *stack_bottom = (void*)((uintptr_t)handle->stack_vaddr -
-                                 (handle->stack_size_pages << PAGE_BITS_4K));
-    vspace_unmap_pages(vspace,
-                       stack_bottom,
-                       handle->stack_size_pages,
-                       PAGE_BITS_4K,
-                       &init_objects.vka);
-
-    vspace_unmap_pages(vspace,
-                       handle->ipc_buffer_vaddr,
-                       1,
-                       PAGE_BITS_4K,
-                       &init_objects.vka);
-
-
-    vspace_free_reservation(vspace, handle->stack_res);
-    vspace_free_reservation(vspace, handle->ipc_buffer_res);
+    thread_unmap_stack_unsafe(handle, vspace);
+    thread_unmap_ipc_buffer_unsafe(handle, vspace);
 
     /**
-     * Wake any threads wanting to join
+     * Wake any threads wanting to join 
+     *  and prevent new ones from joining
      */
-    seL4_Signal(handle->join_notification.cptr);
-    seL4_Wait(handle->join_notification.cptr, NULL); /* Wait till everyone wakes up. */
+    handle->state = THREAD_DESTROYED;
+    libthread_condition_variable_init(handle);
+    cond_signalAll(&handle->join_condition);
 
-    /**
-     * TODO: There is still a race condition if someone entered into the
-     * join function but hasn't waited yet.
-     */
-    vka_free_object(&init_objects.vka, &handle->join_notification);
-
-    
+    vka_free_object(&init_objects.vka, &handle->join_notification);    
     free(handle);
     
     /**
@@ -390,21 +397,25 @@ int thread_destroy_free_handle_custom(thread_handle_t **handle_ref,
      */
     *handle_ref = NULL;
 
-    return 0;
+    libthread_return_success();
+    libthread_epilogue();
 }
 
 
 int thread_destroy_free_handle(thread_handle_t **handle_ref) {
+    libthread_prologue(int, 0);
 
-    if(handle_ref == NULL || *handle_ref == NULL) {
-        ZF_LOGE("Null thread handle passed");
-        return -2;
-    }
+    libthread_guard(handle_ref == NULL || *handle_ref == NULL,
+                    -2, libthread_epilogue,
+                    "Null thread handle passed");
 
-    if(is_current_thread(*handle_ref)) {
-        ZF_LOGE("Cannot destroy currently executing thread");
-        return -3;
-    }
-    return thread_destroy_free_handle_custom(handle_ref, &init_objects.vspace);
+    libthread_guard(is_current_thread(*handle_ref),
+                    -3, libthread_epilogue,
+                    "Cannot destroy currently executing thread");
+    
+    libthread_set_status(thread_destroy_free_handle_custom(handle_ref, &init_objects.vspace));
+    
+    libthread_return_value(libthread_get_status());
+    libthread_epilogue();
 }
 

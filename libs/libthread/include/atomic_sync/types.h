@@ -44,7 +44,7 @@ typedef struct userspace_spinlock {
 
 typedef struct userspace_spinlock_recursive {
     volatile int value;
-    volatile seL4_Word holder;
+    volatile int holder;
 } ulock_recursive_t;
 
 typedef enum {
