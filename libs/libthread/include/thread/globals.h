@@ -9,4 +9,4 @@
 
 #include "types.h"
 
-extern const thread_attr_t thread_1mb_high_priority; 
+extern const thread_attr_t thread_1mb_high_priority;

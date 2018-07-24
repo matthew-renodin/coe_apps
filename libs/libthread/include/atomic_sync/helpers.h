@@ -31,6 +31,21 @@
 
 #define atomic_compare_exchange(lock, expected, value) __atomic_compare_exchange_n((lock), expected, (value), 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED)
 
+/**
+ * It's probably better to use the typed variants of these 
+ * so that you'll at least get a warning about the conversions
+ * because passing the wrong types to the atomic functions can really mess up the code
+ **/
+static inline bool
+atomic_compare_exchange_int(int *lock, int *expected, int value) {
+    return atomic_compare_exchange(lock, expected, value);
+}
+
+static inline bool
+atomic_compare_exchange_word(seL4_Word *lock, seL4_Word *expected, seL4_Word value) {
+    return atomic_compare_exchange(lock, expected, value);
+}
+
 /* convenience function */
 static inline int
 mutex_set_type(mutex_t *mutex, lock_type_t type) {
