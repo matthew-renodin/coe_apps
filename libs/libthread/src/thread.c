@@ -94,11 +94,8 @@ static void thread_init_routine(thread_handle_t *handle,
     }
 
     libthread_lock_acquire();
-    libthread_condition_variable_init(handle);
 
-    /* TODO: Set this more places, assert */
-    thread_state_t expected = THREAD_INIT;
-    atomic_compare_exchange(&handle->state, &expected, THREAD_RUNNING);
+    libthread_condition_variable_init(handle);
 
     libthread_lock_release();
     
@@ -109,7 +106,7 @@ static void thread_init_routine(thread_handle_t *handle,
     
     libthread_lock_acquire();
     ZF_LOGD("Thread finished executing");
-    expected = THREAD_RUNNING;
+    thread_state_t expected = THREAD_RUNNING;
     atomic_compare_exchange(&handle->state, &expected, THREAD_DESTROYED);
     cond_signalAll(&handle->join_condition);
     libthread_lock_release();
@@ -126,7 +123,16 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
     libthread_prologue(int, 0);
     seL4_UserContext regs = {0};
 
-    libthread_guard(handle == NULL, -1, libthread_epilogue, "Null thread handle passed into thread_start");
+    libthread_guard(handle == NULL, -1, libthread_epilogue,
+                    "Null thread handle passed into thread_start");
+
+    libthread_guard(start_routine == NULL, -2, libthread_epilogue,
+                    "Null function pointer passed to thread_start");
+
+    libthread_guard(handle->state != THREAD_INIT, -3, libthread_epilogue,
+                    "Cannot start an already started thread");
+
+    handle->state = THREAD_RUNNING;
 
     /**
      * ARM requires 8-byte alignment
@@ -167,11 +173,11 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
     libthread_set_status(sel4utils_arch_init_context(thread_init_routine,
                                                      (void*)initial_stack_pointer,
                                                      &regs));
-    libthread_guard(libthread_get_status(), -2, libthread_epilogue,
+    libthread_guard(libthread_get_status(), -4, libthread_epilogue,
                     "Failed to initialize thread registers");
 
     libthread_set_status(seL4_TCB_WriteRegisters(handle->tcb.cptr, 1, 0, sizeof(regs)/sizeof(seL4_Word), &regs));
-    libthread_guard(libthread_get_status(), -3, libthread_epilogue,
+    libthread_guard(libthread_get_status(), -5, libthread_epilogue,
                     "Failed to write tcb registers");
 
     libthread_return_success();
@@ -213,7 +219,8 @@ void *thread_join(thread_handle_t *handle)
     libthread_condition_variable_init(handle);
     if(handle->state != THREAD_DESTROYED ) {
         cond_wait(&handle->join_condition);
-        libthread_guard(handle == NULL, NULL, libthread_epilogue, "Thread handle freed before return");
+        libthread_guard(handle == NULL, NULL, libthread_epilogue,
+                        "Thread handle freed before return");
     }
     
     /* Save off returned value before letting go of lock */
@@ -273,6 +280,8 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     libthread_guard(handle == NULL, NULL, libthread_epilogue,
                     "Failed to malloc thread handle");
     
+    handle->state = THREAD_INIT;
+
     /**
      * Create the tcb
      */

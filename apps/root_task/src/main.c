@@ -43,21 +43,6 @@
 #include <process/process.h>
 
 
-/**
- * Print a hello world message, character by character. 
- */
-UNUSED static void fancy_hello_world() { 
-    static const char hello_msg[] = "\n\nI'm sorry, Dave. I'm afraid I can't do that. \n.\n.\n.\n";
-    
-    for(int i = 0; i < sizeof(hello_msg)/sizeof(hello_msg[0]) - 1; i++) {
-        printf("%c", hello_msg[i]);
-        fflush(stdout);
-
-        nanosleep(&(struct timespec){.tv_sec=0, .tv_nsec=250*1000*1000}, NULL);
-    }
-}
-
-
 UNUSED static void *vka_abuser(void* arg) {
     while(1) {
         vka_object_t ob;
@@ -96,6 +81,105 @@ UNUSED static void *vspace_abuser(void* arg) {
 
 
 
+uintptr_t expected_cookie = 0xdeadbeef;
+uintptr_t expected_return = 0xfeebdaed;
+thread_handle_t *test_helper_handle;
+
+static void *test_helper_func(void *cookie) {
+    
+    assert((uintptr_t)cookie == expected_cookie);
+
+    thread_handle_t *handle = thread_handle_get_current();
+    assert(handle == test_helper_handle);
+
+    return (void*)expected_return;
+}
+
+static void test_libthread(void) {
+    int error;
+
+    ZF_LOGD("Starting libthread test.");
+
+    /**
+     * Test the default attribute values
+     */
+    assert(thread_1mb_high_priority.stack_size_pages == 256);
+
+    /**
+     * Testing handle creation
+     */
+    test_helper_handle = thread_handle_create(NULL);
+    assert(test_helper_handle == NULL);
+
+    test_helper_handle = thread_handle_create(&thread_1mb_high_priority);
+    assert(test_helper_handle != NULL);
+
+    /**
+     * Testing thread starting and joining
+     */
+    error = thread_start(NULL, test_helper_func, (void *)expected_cookie);
+
+    error = thread_start(test_helper_handle, test_helper_func, (void *)expected_cookie);
+    assert(error == 0);
+
+    error = thread_start(test_helper_handle, test_helper_func, (void *)expected_cookie);
+    assert(error != 0);
+
+    void *ret = thread_join(test_helper_handle);
+    assert(ret == (void*)expected_return);
+    
+    ret = thread_join(test_helper_handle);
+    assert(ret == (void*)expected_return);
+
+    error = thread_start(test_helper_handle, test_helper_func, (void *)expected_cookie);
+    assert(error != 0);
+
+    /**
+     * Testing thread destruction
+     */
+    error = thread_destroy_free_handle(&test_helper_handle);
+    assert(error == 0);
+    assert(test_helper_handle == NULL);
+
+    error = thread_destroy_free_handle(&test_helper_handle);
+    assert(error != 0);
+
+    ZF_LOGD("Finished libthread test.");
+}
+
+
+
+void test_libprocess(void) {
+    int error;
+
+    ZF_LOGD("Starting libprocess test.");
+
+    process_handle_t test_proc;
+
+    error = process_create(NULL,
+                           "test_child",
+                           &process_default_attrs,
+                           &test_proc);
+    assert(error != 0);
+
+    error = process_create("",
+                           "test_child",
+                           &process_default_attrs,
+                           &test_proc);
+    assert(error != 0);
+
+    error = process_create("test_proc",
+                           "test_child",
+                           &process_default_attrs,
+                           &test_proc);
+    assert(error != 0);
+
+
+    ZF_LOGD("Finished libprocess test.");
+}
+
+
+
 /**
  * Demo entry point after kernel boots.
  */
@@ -105,6 +189,10 @@ int main(void) {
 
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
+
+    test_libthread();
+    test_libprocess();
+
 
     /**
      * Create two new processes

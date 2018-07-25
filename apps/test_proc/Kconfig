@@ -1,0 +1,15 @@
+###############################################################################
+# Test Process - Kconfig
+#
+#
+###############################################################################
+
+menuconfig APP_TEST_PROC
+    bool "Test Process"
+    default y
+    depends on LIB_SEL4 && (LIB_MUSL_C || LIB_SEL4_C) && LIB_SEL4_PLAT_SUPPORT && \
+               LIB_UTILS && LIB_SEL4_SIMPLE_DEFAULT && LIB_SEL4_DEBUG && \
+               LIB_SEL4_UTILS && LIB_SEL4_VKA && \
+               LIB_PROCESS && LIB_INIT
+    help
+       A Helper process for testing the coe libs.
