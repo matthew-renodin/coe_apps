@@ -149,7 +149,6 @@ int process_create(const char *elf_file_name,
                      "Failed to allocate memory for the elf phdrs.");
     sel4utils_elf_read_phdrs(elf_file_name, handle->num_elf_phdrs, handle->elf_phdrs);
 
-
     /**
      * Allocate a heap and map it into the process's page directory.
      */

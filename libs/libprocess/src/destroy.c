@@ -90,6 +90,11 @@ int process_destroy(process_handle_t *handle)
     vka_free_object(&init_objects.vka, &handle->init_data_lock_notification);
 
     /**
+     * Free malloced elf metadata
+     */
+    free(handle->elf_phdrs);
+
+    /**
      * TODO figure out when to free the fault endpoint
      */
 
