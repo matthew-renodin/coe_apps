@@ -179,7 +179,7 @@ int thread_start(thread_handle_t *handle, void *(*start_routine) (void *), void 
 }
 
 
-seL4_Word thread_get_id()
+int thread_get_id()
 {
     thread_handle_t *handle = (thread_handle_t*)init_get_thread_local_storage();
     if(handle == NULL) {

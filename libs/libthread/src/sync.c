@@ -285,7 +285,7 @@ int cond_wait(cond_t* cond) {
 
     #ifdef CONFIG_DEBUG_BUILD
     /* Check the cap actually is a notification. */
-    ZF_LOGF_IF(seL4_DebugCapIdentify(waitNode.notification) != 6, "Thread %lu has wrong cap type", thread_get_id());
+    ZF_LOGF_IF(seL4_DebugCapIdentify(waitNode.notification) != 6, "Thread %d has wrong cap type: %lu", thread_get_id(), (unsigned long) seL4_DebugCapIdentify(waitNode.notification));
     #endif
 
     cond_queue_lock(cond);

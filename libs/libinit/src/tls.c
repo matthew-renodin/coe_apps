@@ -22,7 +22,11 @@ int init_set_thread_local_storage(void *storage)
     __asm __volatile ("msr tpidr_el0, %0" :: "r" (storage));
 #endif
 #ifdef CONFIG_ARCH_AARCH32
-    __asm __volatile ("mrc p15, 0, %0, c13, c0, 3" :: "r" (storage));
+#ifndef CONFIG_IPC_BUF_TPIDRURW
+    __asm __volatile ("mcr p15, 0, %0, c13, c0, 2" :: "r" (storage));
+#else
+    ZF_LOGF("Not implemented! Please disable CONFIG_IPC_BUF_TPIDRURW.");
+#endif
 #endif
 #ifdef CONFIG_ARCH_X86_64
     /* TODO */
@@ -43,7 +47,11 @@ void *init_get_thread_local_storage(void)
     __asm __volatile ("mrs %0, tpidr_el0"  : "=r" (ret) ::);
 #endif
 #ifdef CONFIG_ARCH_AARCH32
-    __asm __volatile ("mcr p15, 0, %0, c13, c0, 3" : "=r" (ret) ::);
+#ifndef CONFIG_IPC_BUF_TPIDRURW
+    __asm __volatile ("mrc p15, 0, %0, c13, c0, 2" : "=r" (ret) ::);
+#else
+    ZF_LOGF("Not implemented! Please disable CONFIG_IPC_BUF_TPIDRURW.");
+#endif
 #endif
 #ifdef CONFIG_ARCH_X86_64
     /* TODO */
