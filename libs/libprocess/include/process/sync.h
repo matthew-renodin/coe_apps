@@ -2,6 +2,7 @@
 
 #include <thread/thread.h>
 #include <atomic_sync/sync.h>
+#include <atomic_sync/helpers.h>
 
 #include <process/process.h>
 
@@ -9,7 +10,7 @@ extern int process_lib_lock_initialized;
 extern mutex_t process_lib_lock;
 
 /******************************************************************************
- *  Commands for dealing with the thread_lib_lock
+ *  Commands for dealing with the process_lib_lock
  *****************************************************************************/
 
 static inline void libprocess_lock_init() {
@@ -29,12 +30,12 @@ static inline void libprocess_lock_init() {
 static inline void 
 libprocess_lock_acquire() {
     libprocess_lock_init();
-    mutex_lock(&thread_lib_lock);
+    mutex_lock(&process_lib_lock);
 }
 
 static inline void 
 libprocess_lock_release() {
-    mutex_unlock(&thread_lib_lock);
+    mutex_unlock(&process_lib_lock);
 }
 
 static inline bool holding_libprocess_lock() {
