@@ -1372,38 +1372,3 @@ int process_connect_pair_to_shmem(process_handle_t *handle1, seL4_CapRights_t pe
                                          conn_name);
 }
 
-
-
-int process_connect(process_connect_attrs_t *attrs, process_connect_result_t *res)
-{
-    UNUSED int error;
-
-    if(!init_check_initialized()) {
-        ZF_LOGE("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to setup.");
-        return -1;
-    }
-
-    if(attrs == NULL) {
-        //TODO
-    }
-
-    if(attrs->name == NULL) {
-        //TODO
-    }
-
-    if(attrs->procs == NULL) {
-        //TODO
-    }
-
-    switch(attrs->type) {
-        case PROCESS_SHARED_MEMORY:
-            
-            break;
-        case PROCESS_ENDPOINT:
-        case PROCESS_NOTIFICATION:
-    }
-    
-
-    return 0;
-}

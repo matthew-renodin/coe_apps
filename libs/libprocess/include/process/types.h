@@ -131,37 +131,3 @@ typedef struct process_handle {
 
 } process_handle_t;
 
-
-typedef enum {
-    PROCESS_ENDPOINT,
-    PROCESS_NOTIFICATION,
-    PROCESS_SHARED_MEMORY
-} process_connect_medium_t;
-
-typedef struct process_connection {
-    process_handle_t *handle;
-    seL4_CapRights_t perms;
-} process_connection_t;
-
-
-typedef struct process_connect_attrs {
-    const char *name;
-
-    process_connection_t *procs;
-    seL4_Word num_procs;
-
-    process_connect_medium_t type;
-
-    /* Optional, only used for shmem */
-    seL4_Word num_shmem_pages;
-
-    /* Optional, use an existing ep/notification instead of a new one */
-    seL4_CPtr existing_cap;
-
-} process_connect_attrs_t;
-
-typedef struct process_connect_result_t {
-    /* */
-    seL4_CPtr parent_cap;
-    void *shmem_addr;
-}
