@@ -20,7 +20,7 @@
  */
 /**
  * @file main.c
- * @brief Implementation of a demo child process. 
+ * @brief Helper process for testing the COE libs.
  *
  */
 
@@ -41,54 +41,6 @@
 
 char _cpio_archive[1]; /* TODO remove */
 
-UNUSED char *my_name;
-UNUSED char *ep_name;
-
-void * worker_thread(void *cookie) {
-
-    printf("Worker thread id %lu\n", (long unsigned)thread_get_id());
-
-    seL4_CPtr ep_cap = init_lookup_endpoint(ep_name);
-
-    char *shmem[2];
-    shmem[0] = init_lookup_shmem("echo1-shmem");
-    shmem[1] = init_lookup_shmem("echo2-shmem");
-
-    seL4_CPtr notifs[2];
-    notifs[0] = init_lookup_notification("echo1-notif");
-    notifs[1] = init_lookup_notification("echo2-notif");
-
-    if(strcmp(my_name, "child1") == 0) {
-        seL4_Send(ep_cap, seL4_MessageInfo_new(99,0,0,0));
-        strcpy(shmem[0], "Hello  brother #2!\n");
-        seL4_Signal(notifs[0]);
-        seL4_Wait(notifs[1], NULL);
-        printf("Got a message from #2: %s\n", shmem[1]);
-
-        seL4_Send(init_lookup_endpoint("parent"), seL4_MessageInfo_new(66,0,0,0));
-
-    } else {
-        seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
-        seL4_DebugProcMap();
-        seL4_DebugDumpScheduler();
-        printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
-
-        strcpy(shmem[1], "Hello  brother #1!\n");
-        seL4_Signal(notifs[1]);
-        seL4_Wait(notifs[0], NULL);
-        printf("Got a message from #1: %s\n", shmem[0]);
-
-        strcpy((char *)init_lookup_shmem("parent"), "Hi mom!");
-        seL4_Signal(init_lookup_notification("parent"));
-    }
-
-    return (void*)42;
-}
-
-
-void *thread_abuser(void *cookie) {
-    return NULL;
-}
 
 /**
  * Demo entry point
@@ -99,35 +51,7 @@ int main(int argc, char **argv) {
     error = init_process();
     ZF_LOGF_IF(error, "Failed to init child process");
 
-    my_name = argv[0];
-    ep_name = argv[1];
 
-    thread_handle_t *worker = thread_handle_create(&thread_1mb_high_priority);
-    ZF_LOGF_IF(worker == NULL, "Failed to create thread.");
-
-    error = thread_start(worker, worker_thread, (void*)0xdeadbeef);
-    ZF_LOGF_IF(error, "Failed to start thread");
-
-
-    
-    ZF_LOGI("Worker thread result: %lu\n", (long unsigned)thread_join(worker));
-    thread_destroy_free_handle(&worker);
-
-
-//    while(1) {
-//        thread_handle_t *tabuser = thread_handle_create(&thread_1mb_high_priority);
-//        ZF_LOGF_IF(tabuser == NULL, "Failed to create thread.");
-//
-//        ZF_LOGI("Thread started with stack top: %p", tabuser->stack_vaddr);
-//        error = thread_start(tabuser, thread_abuser, (void*)NULL);
-//        ZF_LOGF_IF(error, "Failed to start thread");
-//
-//        thread_join(tabuser);
-//        error = thread_destroy_free_handle(&tabuser);
-//        ZF_LOGF_IF(error, "Failed to destroy thread");
-//
-//    }
-    
     return 0;
 }
 
@@ -138,7 +62,7 @@ int main(int argc, char **argv) {
  */
 void abort(void) {
     while(1) {
-        ZF_LOGD("%s still alive.", my_name);
+        ZF_LOGD("Test proc still alive.");
         nanosleep(&(struct timespec){.tv_sec=5, .tv_nsec=0}, NULL);
     }
 }

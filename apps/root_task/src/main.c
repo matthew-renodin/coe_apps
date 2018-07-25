@@ -24,7 +24,7 @@
  *
  */
 
-
+#define _GNU_SOURCE
 /* Include Kconfig variables. */
 #include <autoconf.h>
 
@@ -42,50 +42,18 @@
 #include <init/init.h>
 #include <process/process.h>
 
+#define RUN_TESTS
+//#define RUN_DEMO
 
-UNUSED static void *vka_abuser(void* arg) {
-    while(1) {
-        vka_object_t ob;
-        int error = vka_alloc_endpoint(&init_objects.vka, &ob);
-        ZF_LOGF_IF(error, "Failed to alloc ep");
-        vka_free_object(&init_objects.vka, &ob);
-    }
-    return NULL;
-}
-
-UNUSED static void *vspace_abuser(void* arg) {
-    while(1) {
-        void *addr;
-        seL4_Word num_pages = 1;
-        reservation_t res = vspace_reserve_range(&init_objects.vspace,
-                                                 num_pages * PAGE_SIZE_4K,
-                                                 seL4_AllRights,
-                                                 1,
-                                                 &addr);
-        ZF_LOGF_IF(res.res == NULL, "Failed to reserve range");
-        int error = vspace_new_pages_at_vaddr(&init_objects.vspace,
-                                              addr,
-                                              num_pages,
-                                              PAGE_BITS_4K,
-                                              res);
-        ZF_LOGF_IF(error, "Failed to make new pages");
-        vspace_unmap_pages(&init_objects.vspace,
-                           addr,
-                           num_pages,
-                           PAGE_BITS_4K,
-                           &init_objects.vka);
-        vspace_free_reservation(&init_objects.vspace, res);
-    }
-    return NULL;
-}
+#define NUM_TEST_PROCS 5
 
 
+UNUSED uintptr_t expected_cookie = 0xdeadbeef;
+UNUSED uintptr_t expected_return = 0xfeebdaed;
+UNUSED thread_handle_t *test_helper_handle;
 
-uintptr_t expected_cookie = 0xdeadbeef;
-uintptr_t expected_return = 0xfeebdaed;
-thread_handle_t *test_helper_handle;
 
-static void *test_helper_func(void *cookie) {
+UNUSED static void *test_helper_func(void *cookie) {
     
     assert((uintptr_t)cookie == expected_cookie);
 
@@ -95,7 +63,8 @@ static void *test_helper_func(void *cookie) {
     return (void*)expected_return;
 }
 
-static void test_libthread(void) {
+
+UNUSED static void test_libthread(void) {
     int error;
 
     ZF_LOGD("Starting libthread test.");
@@ -148,51 +117,131 @@ static void test_libthread(void) {
 }
 
 
-
-void test_libprocess(void) {
-    int error;
-
+UNUSED static void test_libprocess(void) {
+    int error, i;
+    process_handle_t test_procs[NUM_TEST_PROCS];
+    UNUSED seL4_CapRights_t test_procs_perms[NUM_TEST_PROCS];
+    
     ZF_LOGD("Starting libprocess test.");
-
-    process_handle_t test_proc;
 
     error = process_create(NULL,
                            "test_child",
                            &process_default_attrs,
-                           &test_proc);
+                           &test_procs[0]);
     assert(error != 0);
 
     error = process_create("",
                            "test_child",
                            &process_default_attrs,
-                           &test_proc);
+                           &test_procs[0]);
     assert(error != 0);
 
-    error = process_create("test_proc",
-                           "test_child",
-                           &process_default_attrs,
-                           &test_proc);
+
+    for(i = 0; i < NUM_TEST_PROCS; i++) {
+        char *proc_name;
+        error = asprintf(&proc_name, "test_proc%i", i);
+        error = process_create("test_proc",
+                               proc_name,
+                               &process_default_attrs,
+                               &test_procs[i]);
+    }
+
     assert(error != 0);
+
+
 
 
     ZF_LOGD("Finished libprocess test.");
 }
 
 
+UNUSED static void test_process_leaks(void) {
+    int err;
+    uint64_t num_cycles = 0;
 
-/**
- * Demo entry point after kernel boots.
- */
-int main(void) {
+    /**
+     * Test process destruction for leaks.
+     */
+    while(1) {
+        num_cycles++;
+        process_handle_t dummy;
+        err = process_create("dummy", /* File name */
+                             "dummy",        /* Process name */
+                             &process_default_attrs,
+                             &dummy);
+        ZF_LOGF_IF(err, "Failed to create dummy. cycles: %lu", num_cycles);
+
+        char *argv[] = { "\0" };
+        err = process_run(&dummy, sizeof(argv)/sizeof(argv[0]), argv);
+        ZF_LOGF_IF(err, "Failed to run dummy. cycles: %lu", num_cycles);
+
+        seL4_Yield();
+        
+        err = process_destroy(&dummy);
+        ZF_LOGF_IF(err, "Failed to destroy dummy. cycles: %lu", num_cycles);
+    }
+
+}
+
+
+UNUSED static void *vka_abuser(void* arg) {
+    while(1) {
+        vka_object_t ob;
+        int error = vka_alloc_endpoint(&init_objects.vka, &ob);
+        ZF_LOGF_IF(error, "Failed to alloc ep");
+        vka_free_object(&init_objects.vka, &ob);
+    }
+    return NULL;
+}
+
+UNUSED static void *vspace_abuser(void* arg) {
+    while(1) {
+        void *addr;
+        seL4_Word num_pages = 1;
+        reservation_t res = vspace_reserve_range(&init_objects.vspace,
+                                                 num_pages * PAGE_SIZE_4K,
+                                                 seL4_AllRights,
+                                                 1,
+                                                 &addr);
+        ZF_LOGF_IF(res.res == NULL, "Failed to reserve range");
+        int error = vspace_new_pages_at_vaddr(&init_objects.vspace,
+                                              addr,
+                                              num_pages,
+                                              PAGE_BITS_4K,
+                                              res);
+        ZF_LOGF_IF(error, "Failed to make new pages");
+        vspace_unmap_pages(&init_objects.vspace,
+                           addr,
+                           num_pages,
+                           PAGE_BITS_4K,
+                           &init_objects.vka);
+        vspace_free_reservation(&init_objects.vspace, res);
+    }
+    return NULL;
+}
+
+UNUSED static void test_thread_init_objects(void) {
+    int err;
+    /**
+     * Try to crash: test vka, vspace locking.
+     */
+    for(int i = 0; i < 4; i++) {
+        thread_attr_t ts_test_attr = thread_1mb_high_priority;
+        ts_test_attr.cpu_affinity = i % 4;
+        thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
+        ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
+
+        err = thread_start(thread_safe_tester, vspace_abuser, NULL);
+        ZF_LOGF_IF(err, "Failed to create thread");
+    }
+
+}
+
+
+
+UNUSED static void demo(void) {
     int err;
     process_handle_t child1, child2;
-
-    err = init_root_task();
-    ZF_LOGF_IF(err, "Failed to init");
-
-    test_libthread();
-    test_libprocess();
-
 
     /**
      * Create two new processes
@@ -314,41 +363,31 @@ int main(void) {
     process_destroy(&child2);
     seL4_DebugDumpScheduler();
 
-    /**
-     * Try to crash: test vka, vspace locking.
-     */
-//    for(int i = 0; i < 4; i++) {
-//        thread_attr_t ts_test_attr = thread_1mb_high_priority;
-//        ts_test_attr.cpu_affinity = i % 4;
-//        thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
-//        ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
-//
-//        err = thread_start(thread_safe_tester, vspace_abuser, NULL);
-//        ZF_LOGF_IF(err, "Failed to create thread");
-//    }
 
     seL4_DebugProcMap();
+}
 
-    /**
-     * Test process destruction for leaks.
-     */
-    while(1) {
-        process_handle_t dummy;
-        err = process_create("dummy", /* File name */
-                             "dummy",        /* Process name */
-                             &process_default_attrs,
-                             &dummy);
-        ZF_LOGF_IF(err, "Failed to create dummy");
 
-        char *argv[] = { "\0" };
-        err = process_run(&dummy, sizeof(argv)/sizeof(argv[0]), argv);
-        ZF_LOGF_IF(err, "Failed to run dummy");
 
-        seL4_Yield();
-        
-        err = process_destroy(&dummy);
-        ZF_LOGF_IF(err, "Failed to destroy dummy");
-    }
+/**
+ * Demo entry point after kernel boots.
+ */
+int main(void) {
+    int err;
+
+    err = init_root_task();
+    ZF_LOGF_IF(err, "Failed to init");
+
+#ifdef RUN_TESTS
+    test_libthread();
+    test_libprocess();
+    //test_thread_init_objects();
+    test_process_leaks();
+#endif
+
+#ifdef RUN_DEMO
+    demo();
+#endif
 
     return 0;
 }
