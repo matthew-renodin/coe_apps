@@ -92,7 +92,11 @@ UNUSED static serial_objects_t serial_objects;
 /**
  * Global variables from libsel4muslcsys
  * that allow us to define where malloc pulls memory from.
+ * These variables require CONFIG_LIB_SEL4_MUSLC_SYS_MORECORE_BYTES==0
  */
+#if CONFIG_LIB_SEL4_MUSLC_SYS_MORECORE_BYTES > 0
+#error "Libinit requires CONFIG_LIB_SEL4_MUSLC_SYS_MORECORE_BYTES to be set to 0 for operation. Please reset this config option."
+#endif
 extern vspace_t *muslc_this_vspace;
 extern reservation_t muslc_brk_reservation;
 extern void *muslc_brk_reservation_start;

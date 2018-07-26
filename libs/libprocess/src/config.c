@@ -42,6 +42,18 @@
 #include <init/init.h>
 #include <mmap/mmap.h>
 #include <process/process.h>
+#include <process/sync.h>
+
+/* Definition of generic linked list operations */
+#define LINKED_LIST_PREPEND(object, head) do { \
+    object->next = head; \
+    head = object; \
+} while(0)
+
+#define LINKED_LIST_POP(object, head) do {\
+    object = head; \
+    head = object->next; \
+} while(0)
 
 /**
  * Definition for function pointer type.
@@ -52,6 +64,14 @@ typedef int (copy_cap_to_proc_func_t)(process_handle_t *handle,
                                       seL4_CapRights_t perms,
                                       const char* conn_name);
 
+/**
+ *  Convenience function assumes valid args and does not worry about locking 
+ **/
+static inline void set_dst_cspacepath_from_handle(cspacepath_t *dst, process_handle_t *handle) {
+    dst->root = handle->cnode.cptr;
+    dst->capDepth = handle->attrs.cnode_size_bits;
+    dst->capPtr = handle->cnode_next_free;
+}
 
 /**
  * Assumes you have error checked args
@@ -60,22 +80,66 @@ static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
                                          seL4_CPtr new_cap,
                                          seL4_CapRights_t perms)
 {
-    int error;
+    libprocess_prologue();
+    seL4_Word slot = seL4_CapNull;
 
     cspacepath_t dst, src;
-    dst.root = handle->cnode.cptr;
-    dst.capDepth = handle->attrs.cnode_size_bits;
-    dst.capPtr = handle->cnode_next_free;
+    set_dst_cspacepath_from_handle(&dst, handle);
 
     vka_cspace_make_path(&init_objects.vka, new_cap, &src);
-    error = vka_cnode_copy(&dst, &src, perms);
-    if(error) {
-        ZF_LOGE("Failed to copy cap into child cnode.");
-        return seL4_CapNull;
-    }
-
-    return handle->cnode_next_free++;
+    libprocess_set_status(vka_cnode_copy(&dst, &src, perms));
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, 
+                     "Failed to copy cap into child cnode.");
+    slot = handle->cnode_next_free++;
     
+    libprocess_custom_epilogue()
+    libprocess_return_value(libprocess_get_status() == 0 ? slot : seL4_CapNull);
+}
+
+/**
+ * Assumes you have error checked args
+ */
+static int delete_cap_from_last_slot(process_handle_t *handle)
+{
+    libprocess_prologue();
+
+    --handle->cnode_next_free;
+    
+    cspacepath_t dst;
+    set_dst_cspacepath_from_handle(&dst, handle);
+    seL4_CNode_Delete(dst.root, dst.capPtr, dst.capDepth);
+
+    libprocess_return_value(libprocess_get_status());
+}
+
+/**
+ * Convenience function for copying ep and notifications to process
+ * Assumes all arguments have been error checked
+ * This function must acquire process lock because current_list_head is a critical resource
+ */
+static inline int copy_cptr_to_proc(process_handle_t *handle,
+                                    seL4_CPtr ep_cap,
+                                    seL4_CapRights_t perms,
+                                    const char *conn_name,
+                                    EndpointData **current_list_head) 
+{
+    libprocess_prologue();
+
+    EndpointData *ep_data = malloc(sizeof(EndpointData));
+    libprocess_guard(ep_data == NULL, -1, libprocess_epilogue,
+                     "Failed to malloc Endpoint Data");
+
+    endpoint_data__init(ep_data);
+    ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
+    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
+    libprocess_guard(ep_data->cap == seL4_CapNull, -2, free_endpoint,
+                     "Failed to copy ep cap");
+
+    LINKED_LIST_PREPEND(ep_data, *current_list_head);
+    libprocess_return_success();
+    free_endpoint:
+        free(ep_data);
+    libprocess_epilogue();
 }
 
 
@@ -87,25 +151,8 @@ static int copy_ep_to_proc(process_handle_t *handle,
                            seL4_CapRights_t perms,
                            const char *conn_name) 
 {
-    EndpointData *ep_data = malloc(sizeof(EndpointData));
-    if(ep_data == NULL) {
-        ZF_LOGE("Failed to malloc Endpoint Data");
-        return -1;
-    }
-
-    endpoint_data__init(ep_data);
-    ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
-    if(ep_data->cap == seL4_CapNull) {
-        ZF_LOGE("Failed to copy ep cap");
-        return -2;
-    }
-
-    ep_data->next = handle->init_data.ep_list_head;
-    handle->init_data.ep_list_head = ep_data;
-
-    return 0;
-
+    return copy_cptr_to_proc(handle, ep_cap, perms, conn_name,
+                             &handle->init_data.ep_list_head);
 }
 
 
@@ -117,26 +164,8 @@ static int copy_notification_to_proc(process_handle_t *handle,
                                      seL4_CapRights_t perms,
                                      const char *conn_name) 
 {
-    EndpointData *ep_data = malloc(sizeof(EndpointData));
-    if(ep_data == NULL) {
-        ZF_LOGE("Failed to malloc Endpoint Data");
-        return -1;
-    }
-
-    endpoint_data__init(ep_data);
-    ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
-    if(ep_data->cap == seL4_CapNull) {
-        ZF_LOGE("Failed to copy ep cap");
-        return -2;
-    }
-
-    /* Push the endpoint onto the list */
-    ep_data->next = handle->init_data.notification_list_head;
-    handle->init_data.notification_list_head = ep_data;
-
-    return 0;
-
+    return copy_cptr_to_proc(handle, ep_cap, perms, conn_name,
+                             &handle->init_data.notification_list_head);
 }
 
 
@@ -148,23 +177,20 @@ static int copy_shmem_to_proc(process_handle_t *handle,
                               seL4_Word num_pages,
                               const char *conn_name) 
 {
+    libprocess_prologue();
+
     SharedMemoryData *shmem_data = malloc(sizeof(SharedMemoryData));
-    if(shmem_data == NULL) {
-        ZF_LOGE("Failed to malloc Shmem Data");
-        return -1;
-    }
+    libprocess_guard(shmem_data == NULL, -1, libprocess_epilogue,
+                     "Failed to malloc Shmem Data");
 
     shared_memory_data__init(shmem_data);
     shmem_data->name = (char *)conn_name; /* protobuf uses non const strings */
     shmem_data->addr = (seL4_Word)vaddr;
     shmem_data->length_bytes = num_pages * PAGE_SIZE_4K;
 
-    /* Push the shmem data onto the list */
-    shmem_data->next = handle->init_data.shmem_list_head;
-    handle->init_data.shmem_list_head = shmem_data;
-
-    return 0;
-
+    LINKED_LIST_PREPEND(shmem_data, handle->init_data.shmem_list_head);
+    libprocess_return_success();
+    libprocess_epilogue();
 }
 
 
@@ -177,27 +203,31 @@ static int copy_irq_to_proc(process_handle_t *handle,
                             seL4_Word irq_number,
                             const char *conn_name)
 {
-    IrqData *irq_data = malloc(sizeof(IrqData));
-    if(irq_data == NULL) {
-        ZF_LOGE("Failed to malloc Irq Data");
-        return -1;
-    }
-    irq_data__init(irq_data);
+    libprocess_prologue();
 
+    IrqData *irq_data = malloc(sizeof(IrqData));
+    libprocess_guard(irq_data == NULL, -1, libprocess_epilogue,
+                     "Failed to malloc Irq Data");
+
+    irq_data__init(irq_data);
     irq_data->name = (char *)conn_name; /* protobuf uses non const strings */
     irq_data->irq_cap = copy_cap_into_next_slot(handle, irq_cap, seL4_AllRights);
+    libprocess_guard(irq_data->irq_cap != seL4_CapNull, -2, free_data, "Failed to copy IRQ cap");
     irq_data->ep_cap = copy_cap_into_next_slot(handle, ep_cap, seL4_AllRights);
+    libprocess_guard(irq_data->ep_cap != seL4_CapNull, -2, uncopy_irq_cap, "Failed to copy EP cap");
     irq_data->number = irq_number;
 
-    /* Push onto irq list */
-    irq_data->next = handle->init_data.irq_list_head;
-    handle->init_data.irq_list_head = irq_data;
-
-    return 0;
+    LINKED_LIST_PREPEND(irq_data, handle->init_data.irq_list_head);
+    libprocess_return_success();
+    uncopy_irq_cap:
+        delete_cap_from_last_slot(handle);
+    free_data:
+        free(irq_data);
+    libprocess_epilogue();
 }
 
 /**
- *
+ * Assumes you have error checked args
  */
 static int copy_devmem_to_proc(process_handle_t *handle,
                                void *vaddr,
@@ -207,15 +237,14 @@ static int copy_devmem_to_proc(process_handle_t *handle,
                                seL4_CPtr *caps,
                                const char *device_name)
 {
+    libprocess_prologue();
+    int current_cap = 0;
 
     DeviceMemoryData *devmem_data = malloc(sizeof(DeviceMemoryData));
-    if(devmem_data == NULL) {
-        ZF_LOGE("Failed to malloc device memory data");
-        return -1;
-    }
-    device_memory_data__init(devmem_data);
+    libprocess_guard(devmem_data == NULL, -1, libprocess_epilogue, 
+                     "Failed to malloc device memory data");
 
-    
+    device_memory_data__init(devmem_data);
     devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
     devmem_data->virt_addr = (seL4_Word)vaddr;
     devmem_data->phys_addr = (seL4_Word)paddr; 
@@ -225,13 +254,12 @@ static int copy_devmem_to_proc(process_handle_t *handle,
     seL4_CPtr *new_caps = NULL;
     if(caps != NULL) {
         new_caps = malloc(sizeof(seL4_CPtr)*num_pages);
-        if(new_caps == NULL) {
-            ZF_LOGE("Failed to malloc new space for device caps");
-            return -9;
-        }
+        libprocess_guard(new_caps == NULL, -9, free_data, 
+                         "Failed to malloc new space for device caps");
 
-        for(int i = 0; i < num_pages; i++) {
-            new_caps[i] = copy_cap_into_next_slot(handle, caps[i], seL4_AllRights); 
+        for(current_cap = 0; current_cap < num_pages; current_cap++) {
+            new_caps[current_cap] = copy_cap_into_next_slot(handle, caps[current_cap], seL4_AllRights); 
+            libprocess_guard(new_caps[current_cap] != seL4_CapNull, -2, uncopy_caps, "Failed to copy cap");
         }
 
         /**
@@ -247,11 +275,16 @@ static int copy_devmem_to_proc(process_handle_t *handle,
         }
     }
 
-    /* Push onto init_data list */
-    devmem_data->next = handle->init_data.devmem_list_head;
-    handle->init_data.devmem_list_head = devmem_data;
+    LINKED_LIST_PREPEND(devmem_data, handle->init_data.devmem_list_head);
+    libprocess_return_success();
 
-    return 0;
+    uncopy_caps:
+        --current_cap; // current_cap failed and does not need uncopying
+        for(; current_cap >= 0; --current_cap) { delete_cap_from_last_slot(handle); }
+        free(new_caps);
+    free_data:
+        free(devmem_data);
+    libprocess_epilogue();
 }
 
 
@@ -272,7 +305,6 @@ static void free_parent_cap(seL4_CPtr cap)
 }
 
 
-
 static int connect_many_to_existing_generic(process_handle_t **handle_list,
                                             seL4_CapRights_t *perms_list,
                                             seL4_Word num_procs,
@@ -281,28 +313,18 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
                                             process_shared_objects_t *shobj,
                                             const char *conn_name)
 {
-    int error;
+    libprocess_prologue();
+    libprocess_check_initialized();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_arg(handle_list);
+    libprocess_check_arg(perms_list);
+    libprocess_check_arg(conn_name);
 
-    if(handle_list == NULL || perms_list == NULL) {
-        ZF_LOGE("Null process handle or perms list passed");
-        return -2; /* TODO come up with error codes */
-    }
+    int process_number = 0;
+    process_shared_objects_ref_t *tmp = NULL;
 
-    if(conn_name == NULL) {
-        ZF_LOGE("Null pointer to name passed");
-        return -3;
-    }
-
-
-    for(int i = 0; i < num_procs; i++) {
-        process_handle_t *handle = handle_list[i];
+    for(process_number = 0; process_number < num_procs; process_number++) {
+        process_handle_t *handle = handle_list[process_number];
 
         if(handle == NULL) {
             ZF_LOGW("Null process handle in list, continuing");
@@ -315,25 +337,21 @@ static int connect_many_to_existing_generic(process_handle_t **handle_list,
         }
 
         if(shobj != NULL) {
-            process_shared_objects_ref_t *tmp = handle->shared_objects;
-            handle->shared_objects = malloc(sizeof(process_shared_objects_ref_t));
-            if(handle->shared_objects == NULL) {
-                ZF_LOGE("Failed to malloc shared object ref");
-                handle->shared_objects = tmp;
-                return -4;
-            }
-            handle->shared_objects->next = tmp;
-            handle->shared_objects->ref = shobj;
+            tmp = malloc(sizeof(process_shared_objects_ref_t));
+            libprocess_check_malloc(tmp, failed_malloc);
+            tmp->ref = shobj;
+            LINKED_LIST_PREPEND(tmp, handle->shared_objects);
         }
 
-        error = copy_cap_to_proc(handle, existing_cap, perms_list[i], conn_name);
-        if(error) {
-            ZF_LOGE("Failed to copy cap to process");
-            return -6;
-        }
+        libprocess_set_status(copy_cap_to_proc(handle, existing_cap, perms_list[process_number], conn_name));
+        libprocess_error_guard(libprocess_get_status(), CAP_COPY_ERROR, failed_cap_copy);
     }
 
-    return 0;
+    libprocess_return_success();
+failed_malloc:
+failed_cap_copy:
+    /* TODO: FAIL somewhat gracefully*/
+    libprocess_epilogue();
 }
 
 
@@ -345,78 +363,53 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
                                                   const char* device_name,
                                                   bool add_caps)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(device_name == NULL) {
-        ZF_LOGE("Null device name passed");
-        return -3;
-    }
+    libprocess_check_arg(handle);
+    libprocess_check_arg(device_name);
 
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed.");
-        return -2; /* TODO come up with error codes */
-    }
-
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process is already running.");
-        return -3; /* TODO come up with error codes */
-    }
-
+    libprocess_check_state(handle);
 
     ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_bits),
                "Physical address of device not aligned to page boundaries.");
 
-
-
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
-    if(caps == NULL) {
-        ZF_LOGE("Failed to malloc an array to hold page caps");
-        return -4;
-    }
+    libprocess_check_malloc(caps, libprocess_epilogue);
 
     mmap_entry_attr_t attrs = mmap_attr_4k_device;
     attrs.page_size_bits = page_bits;
 
     void * vaddr;
     reservation_t res; /* TODO: track this reservation to free later */
-    error = mmap_new_device_pages_custom(&handle->vspace,
-                                         handle->page_dir.cptr,
-                                         paddr,
-                                         num_pages,
-                                         &attrs,
-                                         caps,
-                                         &vaddr,
-                                         &res);
-    if(error) {
-        ZF_LOGE("Failed to map device");
-        free(caps);
-        return -5;
-    }
+    libprocess_set_status(mmap_new_device_pages_custom(&handle->vspace,
+                                                       handle->page_dir.cptr,
+                                                       paddr,
+                                                       num_pages,
+                                                       &attrs,
+                                                       caps,
+                                                       &vaddr,
+                                                       &res));
+    libprocess_guard(libprocess_get_status(), -6, free_caps, "Failed to map device");
 
 
-    error = copy_devmem_to_proc(handle,
-                                vaddr,
-                                paddr,
-                                num_pages,
-                                page_bits,
-                                add_caps ? caps : NULL,
-                                device_name);
-    if(error) {
-        ZF_LOGE("Failed to copy device memory to child");
-        free(caps);
-        return -6;
-    }
+    libprocess_set_status(copy_devmem_to_proc(handle,
+                                              vaddr,
+                                              paddr,
+                                              num_pages,
+                                              page_bits,
+                                              add_caps ? caps : NULL,
+                                              device_name));
+    libprocess_guard(libprocess_get_status(), -6, free_caps, 
+                     "Failed to copy device memory to child");
 
     free(caps);
+    libprocess_return_success();
 
-    return 0;
+    free_caps:
+        free(caps);
+    libprocess_epilogue();
 }
 
 
@@ -426,76 +419,52 @@ static int process_map_my_device_pages_optional_caps(process_handle_t *handle,
                                                      const char *new_device_name,
                                                      bool add_caps)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(device_name == NULL || new_device_name == NULL) {
-        ZF_LOGE("Null device name passed");
-        return -2;
-    }
+    libprocess_check_arg(device_name);
+    libprocess_check_arg(new_device_name);
+    libprocess_check_arg(handle);
 
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed.");
-        return -3; /* TODO come up with error codes */
-    }
-
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process is already running.");
-        return -4; /* TODO come up with error codes */
-    }
+    libprocess_check_state(handle);
 
     /**
      * Lookup device info in parent's init data
      */
     init_devmem_info_t info;
-    error = init_lookup_devmem_info(device_name, &info);
-    if(error) {
-        ZF_LOGE("Failed to lookup device mem object");
-        return -6;
-    }
-
-    if(info.caps == NULL) {
-        ZF_LOGE("Failed to find caps for memory");
-        return -7;
-    }
+    libprocess_set_status(init_lookup_devmem_info(device_name, &info))
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to lookup device mem object");
+    libprocess_guard(info.caps == NULL, -6, libprocess_epilogue,
+                     "Failed to find caps for memory");
 
     mmap_entry_attr_t attrs = mmap_attr_4k_device;
     attrs.page_size_bits = info.size_bits;
 
     void * vaddr;
-    reservation_t res; /* TODO: track this reservation to free later */
-    error = mmap_existing_pages_custom(&handle->vspace,
-                                       handle->page_dir.cptr,
-                                       info.num_pages,
-                                       &attrs,
-                                       info.caps,
-                                       &vaddr,
-                                       &res);
-    if(error) {
-        ZF_LOGE("Failed to map device");
-        return -8;
-    }
+    reservation_t res;
+    libprocess_set_status(mmap_existing_pages_custom(&handle->vspace,
+                                                     handle->page_dir.cptr,
+                                                     info.num_pages,
+                                                     &attrs,
+                                                     info.caps,
+                                                     &vaddr,
+                                                     &res));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, "Failed to map device");
 
     
-    error = copy_devmem_to_proc(handle,
-                                info.vaddr,
-                                info.paddr,
-                                info.num_pages,
-                                info.size_bits,
-                                add_caps ? info.caps : NULL,
-                                new_device_name);
-    if(error) {
-        ZF_LOGE("Failed to copy device memory to child");
-        return -9;
-    }
+    libprocess_set_status(copy_devmem_to_proc(handle,
+                                              info.vaddr,
+                                              info.paddr,
+                                              info.num_pages,
+                                              info.size_bits,
+                                              add_caps ? info.caps : NULL,
+                                              new_device_name));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, "Failed to copy device memory to child");
 
-    return 0;
+    libprocess_return_success();
+    libprocess_epilogue();
 }
 
 
@@ -564,34 +533,17 @@ int process_add_device_irq(process_handle_t *handle,
                            int irq_number,
                            const char* device_name)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(init_objects.info == NULL) {
-        ZF_LOGE("This function can only be used by the root task");
-        return -2;
-    }
-
-    if(device_name == NULL) {
-        ZF_LOGE("Null device name passed");
-        return -3;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed.");
-        return -4; /* TODO come up with error codes */
-    }
+    libprocess_guard(init_objects.info == NULL, -6, libprocess_epilogue,
+                     "This function can only be used by the root task");
     
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process is already running.");
-        return -5; /* TODO come up with error codes */
-    }
+    libprocess_check_arg(device_name);
+    libprocess_check_arg(handle);
+
+    libprocess_check_state(handle);
 
     seL4_CPtr irq_cap;
     cspacepath_t irq_path;
@@ -600,56 +552,52 @@ int process_add_device_irq(process_handle_t *handle,
      * Since our cap slots are managed by vka, we need a spot
      * for simple to put our new irq cap.
      */
-    error = vka_cspace_alloc(&init_objects.vka, &irq_cap);
-    if(error) {
-        ZF_LOGE("Failed to find a slot for the irq cap");
-        return -5;
-    }
+    libprocess_set_status(vka_cspace_alloc(&init_objects.vka, &irq_cap));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to find a slot for the irq cap");
     vka_cspace_make_path(&init_objects.vka, irq_cap, &irq_path);
 
     /**
      * Get the irq cap using simple. This uses the bootinfo's seL4_CapIRQControl
      * cap to generate it.
      */
-    error = simple_get_IRQ_handler(&init_objects.simple, irq_number, irq_path);
-    if(error) {
-        ZF_LOGE("Failed to get an IRQ handler cap from the IRQControl cap");
-        return -6;
-    }
+    libprocess_set_status(simple_get_IRQ_handler(&init_objects.simple, irq_number, irq_path));
+    libprocess_guard(libprocess_get_status(), -6, free_cspace,
+                     "Failed to get an IRQ handler cap from the IRQControl cap");
 
     /**
      * Allocate a notification object.
      */
     vka_object_t irq_notification;
-    error = vka_alloc_notification(&init_objects.vka, &irq_notification);
-    if(error) {
-        ZF_LOGE("Failed to allocate a notification object");
-        return -7;
-    }
+    libprocess_set_status(vka_alloc_notification(&init_objects.vka, &irq_notification));
+    libprocess_guard(libprocess_get_status(), -6, free_cspace,
+                     "Failed to allocate a notification object");
     /**
      * bind the notification to our irq cap
      */
-    error = seL4_IRQHandler_SetNotification(irq_cap, irq_notification.cptr);
-    if(error) {
-        ZF_LOGE("Failed to bind our irq to the notification");
-        return -8;
-    }
+    libprocess_set_status(seL4_IRQHandler_SetNotification(irq_cap, irq_notification.cptr));
+    libprocess_guard(libprocess_get_status(), -6, free_notification,
+                     "Failed to bind our irq to the notification");
 
     /**
      * Enable IRQ and Ack any outstanding intterupts
      */
     seL4_IRQHandler_Ack(irq_cap);
 
-    error = copy_irq_to_proc(handle, irq_cap, irq_notification.cptr, irq_number, device_name);
-    if(error) {
-        ZF_LOGE("Failed to copy irq caps to proc");
-        return -9;
-    }
+    libprocess_set_status(copy_irq_to_proc(handle, irq_cap, irq_notification.cptr, irq_number, device_name));
+    libprocess_guard(libprocess_get_status(), -6, free_notification,
+                     "Failed to copy irq caps to proc");
 
     free_parent_cap(irq_cap);
     free_parent_cap(irq_notification.cptr);
+    libprocess_return_success();
 
-    return 0;
+    free_notification:
+        vka_free_object(&init_objects.vka, &irq_notification);
+    free_cspace:
+        vka_cspace_free(&init_objects.vka, irq_cap);
+    libprocess_epilogue();
+
 }
 
 
@@ -657,44 +605,31 @@ int process_add_my_device_irq(process_handle_t *handle,
                               const char *device_name,
                               const char *new_device_name)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(device_name == NULL || new_device_name == NULL) {
-        ZF_LOGE("Null device name passed");
-        return -3;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed.");
-        return -4; /* TODO come up with error codes */
-    }
+    libprocess_check_initialized();
     
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process is already running.");
-        return -5; /* TODO come up with error codes */
-    }
+    libprocess_check_arg(device_name);
+    libprocess_check_arg(new_device_name);
+    libprocess_check_arg(handle);
+
+    libprocess_check_state(handle);
 
     init_irq_info_t info;
-    error = init_lookup_irq(device_name, &info);
+    libprocess_set_status(init_lookup_irq(device_name, &info));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to lookup IRQ caps");
     
-    error = copy_irq_to_proc(handle, info.irq, info.ep, info.number, new_device_name);
-    if(error) {
-        ZF_LOGE("Failed to copy irq caps to child");
-        return -6;
-    }
+    libprocess_set_status(copy_irq_to_proc(handle, info.irq, info.ep, info.number, new_device_name));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to copy irq caps to child");
 
     /**
      * TODO: do we free the parent's caps?
      */
 
-    return 0;
+    libprocess_return_success();
+    libprocess_epilogue();
 }
                               
 /******************************************************************************
@@ -707,67 +642,56 @@ int process_give_untyped_resources(process_handle_t *handle,
                                    seL4_Word size_bits,
                                    seL4_Word num_objects)
 {
-    int error;
+    libprocess_prologue();
+    libprocess_check_initialized();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_give_untyped_resources.");
-        return -2; /* TODO come up with error codes */
-    }
-
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process has already been started.");
-        return -3;
-    }
+    libprocess_check_arg(handle);
+    libprocess_check_state(handle);
 
     ZF_LOGV("Warning:\n"
             "\tAdding untyped memory to child process!"
             "\tThis may give it unexpected permissions.");
-
-
-    for(seL4_Word i = 0; i < num_objects; i++) {
-        
-        process_object_t *ut = (process_object_t*)malloc(sizeof(process_object_t));
-        if(ut == NULL) {
-            ZF_LOGE("Failed to malloc an untyped process object");
-            return -4;
-        }
-
-        error = vka_alloc_untyped(&init_objects.vka, size_bits, &ut->obj);
-        if(error) {
-            ZF_LOGE("Failed to allocate ut object.");
-            return -5;
-        }
     
-        UntypedData *ut_data = malloc(sizeof(UntypedData));
-        if(ut_data == NULL) {
-            ZF_LOGE("Failed to allocate Untyped Data");
-            return -6;
-        }
+    int i = 0;
+    process_object_t *ut = NULL;
+    UntypedData *ut_data = NULL;
+
+    for(; i < num_objects; i++) {
+        
+        ut = (process_object_t*)malloc(sizeof(process_object_t));
+        libprocess_check_malloc(ut, failed_ut_malloc);
+
+        libprocess_set_status(vka_alloc_untyped(&init_objects.vka, size_bits, &ut->obj));
+        libprocess_guard(libprocess_get_status(), -6, failed_vka, "Failed to allocate ut object");
+    
+        ut_data = malloc(sizeof(UntypedData));
+        libprocess_check_malloc(ut_data, failed_data_malloc);
     
         untyped_data__init(ut_data);
         ut_data->size = size_bits;
-        ut_data->cap = copy_cap_into_next_slot(handle, ut->obj.cptr, seL4_AllRights); 
-        if(ut_data->cap == seL4_CapNull) {
-            ZF_LOGE("Failed to copy ut cap");
-            return -7;
-        }
+        ut_data->cap = copy_cap_into_next_slot(handle, ut->obj.cptr, seL4_AllRights);
+        libprocess_error_guard(ut_data->cap == seL4_CapNull, CAP_COPY_ERROR, failed_cap_copy);
         
         /* Push the ut data onto the list */
-        ut_data->next = handle->init_data.untyped_list_head;
-        handle->init_data.untyped_list_head = ut_data;
-
-        ut->next = handle->untyped_allocation_list;
-        handle->untyped_allocation_list = ut;
+        LINKED_LIST_PREPEND(ut_data, handle->init_data.untyped_list_head);
+        LINKED_LIST_PREPEND(ut, handle->untyped_allocation_list);
     }
     
-    return 0;
+    libprocess_return_success();
+    failed_ut_malloc:
+    --i; // We failed at the beginning of this iteration
+    for(; i>=0; --i) {
+        LINKED_LIST_POP(ut, handle->untyped_allocation_list);
+        LINKED_LIST_POP(ut_data, handle->init_data.untyped_list_head);
+        delete_cap_from_last_slot(handle);
+    failed_cap_copy:
+        free(ut_data);
+    failed_data_malloc:
+        vka_free_object(&init_objects.vka, &ut->obj);
+    failed_vka:
+        free(ut);
+    }
+    libprocess_epilogue();
 }
 
 
@@ -784,37 +708,28 @@ int process_connect_many_to_self_endpoint(process_handle_t **handle_list,
                                           const char *conn_name,
                                           seL4_CPtr *new_self_cap)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
     vka_object_t ep; /* TODO for now we leak the memory if parent wants to connect */
-    error = vka_alloc_endpoint(&init_objects.vka, &ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate endpoint object.");
-        return -2;
-    }
+    libprocess_set_status(vka_alloc_endpoint(&init_objects.vka, &ep));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to allocate endpoint object.");
 
     *new_self_cap = ep.cptr;
+    libprocess_set_status(connect_many_to_existing_generic(handle_list,
+                                                           perms_list,
+                                                           num_procs,
+                                                           copy_ep_to_proc,
+                                                           ep.cptr,
+                                                           NULL,
+                                                           conn_name));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to connect");
 
-    error = connect_many_to_existing_generic(handle_list,
-                                             perms_list,
-                                             num_procs,
-                                             copy_ep_to_proc,
-                                             ep.cptr,
-                                             NULL,
-                                             conn_name);
-    if(error) {
-        ZF_LOGE("Failed to connect");
-        return -5;
-    }
-
-    return 0;
+    libprocess_return_success();
+    libprocess_epilogue();
 }
 
 
@@ -824,35 +739,19 @@ int process_connect_many_to_endpoint(process_handle_t **handle_list,
                                      seL4_Word num_procs,
                                      const char *conn_name)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
     vka_object_t *ep = malloc(sizeof(vka_object_t));
-    if(ep == NULL) {
-        ZF_LOGE("Failed to malloc ep data");
-        return -2;
-    }
+    libprocess_check_malloc(ep, libprocess_epilogue);
 
     process_shared_objects_t *new_obj = malloc(sizeof(process_shared_objects_t));
-    if(new_obj == NULL) {
-        ZF_LOGE("Failed to malloc shared object data");
-        free(ep);
-        return -3;
-    }
+    libprocess_check_malloc(new_obj, free_endpoint);
 
-    error = vka_alloc_endpoint(&init_objects.vka, ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate endpoint object.");
-        free(ep);
-        free(new_obj);
-        return -4;
-    }
+    libprocess_set_status(vka_alloc_endpoint(&init_objects.vka, ep));
+    libprocess_guard(libprocess_get_status(), -6, fail,
+                     "Failed to allocate endpoint object.");
 
     /**
      * Even though we don't return it, we actually retain a cap to the endpoint for bookkeeping.
@@ -861,21 +760,22 @@ int process_connect_many_to_endpoint(process_handle_t **handle_list,
     new_obj->obj_list = ep;
     new_obj->num_objs = 1; 
 
-    error = connect_many_to_existing_generic(handle_list,
-                                             perms_list,
-                                             num_procs,
-                                             copy_ep_to_proc,
-                                             ep->cptr,
-                                             new_obj,
-                                             conn_name);
-    if(error) {
-        ZF_LOGE("Failed to connect");
-        free(ep);
-        free(new_obj);
-        return -5;
-    }
+    libprocess_set_status(connect_many_to_existing_generic(handle_list,
+                                                           perms_list,
+                                                           num_procs,
+                                                           copy_ep_to_proc,
+                                                           ep->cptr,
+                                                           new_obj,
+                                                           conn_name));
+    libprocess_guard(libprocess_get_status(), -6, fail,
+                     "Failed to connect");
 
-    return 0;
+    libprocess_return_success();
+    fail:
+        free(new_obj);
+    free_endpoint:
+        free(ep);
+    libprocess_epilogue();
 }
 
 
@@ -937,32 +837,30 @@ int process_connect_many_to_self_notification(process_handle_t **handle_list,
                                               const char *conn_name,
                                               seL4_CPtr *new_self_cap)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
     vka_object_t ep;
-    error = vka_alloc_notification(&init_objects.vka, &ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate endpoint object.");
-        return -2;
-    }
+    libprocess_set_status(vka_alloc_notification(&init_objects.vka, &ep));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue,
+                     "Failed to allocate endpoint object");
 
-    error = connect_many_to_existing_generic(handle_list,
-                                             perms_list,
-                                             num_procs,
-                                             copy_notification_to_proc,
-                                             ep.cptr,
-                                             NULL,
-                                             conn_name);
+    libprocess_set_status(connect_many_to_existing_generic(handle_list,
+                                                           perms_list,
+                                                           num_procs,
+                                                           copy_notification_to_proc,
+                                                           ep.cptr,
+                                                           NULL,
+                                                           conn_name));
+    libprocess_guard(libprocess_get_status(), -6, fail,
+                     "Failed to connect");
 
     *new_self_cap = ep.cptr;
-    return 0;
+    libprocess_return_success();
+    fail:
+        vka_free_object(&init_objects.vka, &ep);
+    libprocess_epilogue();
 }
 
 int process_connect_many_to_notification(process_handle_t **handle_list,
@@ -970,35 +868,19 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
                                          seL4_Word num_procs,
                                          const char *conn_name)
 {
-    int error;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
     vka_object_t *ep = malloc(sizeof(vka_object_t));
-    if(ep == NULL) {
-        ZF_LOGE("Failed to malloc ep data");
-        return -2;
-    }
+    libprocess_check_malloc(ep, libprocess_epilogue);
 
     process_shared_objects_t *new_obj = malloc(sizeof(process_shared_objects_t));
-    if(new_obj == NULL) {
-        ZF_LOGE("Failed to malloc shared object data");
-        free(ep);
-        return -3;
-    }
+    libprocess_check_malloc(new_obj, failed_malloc);
 
-    error = vka_alloc_notification(&init_objects.vka, ep);
-    if(error) {
-        ZF_LOGE("Failed to allocate endpoint object.");
-        free(ep);
-        free(new_obj);
-        return -4;
-    }
+    libprocess_set_status(vka_alloc_notification(&init_objects.vka, ep));
+    libprocess_guard(libprocess_get_status(), -6, fail,
+                     "Failed to allocate endpoint object.");
 
     /**
      * Even though we don't return it, we actually retain a cap to the endpoint for bookkeeping.
@@ -1007,21 +889,21 @@ int process_connect_many_to_notification(process_handle_t **handle_list,
     new_obj->obj_list = ep;
     new_obj->num_objs = 1; 
 
-    error = connect_many_to_existing_generic(handle_list,
-                                             perms_list,
-                                             num_procs,
-                                             copy_notification_to_proc,
-                                             ep->cptr,
-                                             new_obj,
-                                             conn_name);
-    if(error) {
-        ZF_LOGE("Failed to connect");
-        free(ep);
-        free(new_obj);
-        return -5;
-    }
+    libprocess_set_status(connect_many_to_existing_generic(handle_list,
+                                                           perms_list,
+                                                           num_procs,
+                                                           copy_notification_to_proc,
+                                                           ep->cptr,
+                                                           new_obj,
+                                                           conn_name));
+    libprocess_guard(libprocess_get_status(), -6, fail, "Failed to connect");
 
-    return 0;
+    libprocess_return_success();
+    fail:
+        free(ep);
+    failed_malloc:
+        free(new_obj);
+    libprocess_epilogue();
 }
 
 
@@ -1081,30 +963,18 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
                                        const char *conn_name,
                                        void **new_ptr)
 {
-    UNUSED int error, i, j;
+    libprocess_prologue();
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(handle_list == NULL || perms_list == NULL) {
-        ZF_LOGE("Null process handle or perms list passed");
-        return -2; /* TODO come up with error codes */
-    }
-
-    if(conn_name == NULL) {
-        ZF_LOGE("Null pointer to name passed");
-        return -3;
-    }
+    libprocess_check_arg(handle_list);
+    libprocess_check_arg(perms_list);
+    libprocess_check_arg(conn_name);
+    
+    UNUSED int i, j;
 
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
-    if(caps == NULL) {
-        ZF_LOGE("Failed to malloc temporary space for page caps");
-        return -4;
-    }
+    libprocess_check_malloc(caps, libprocess_epilogue);
 
     /**
      * We first map the pages into our own space.
@@ -1113,18 +983,15 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
     attrs.readable = 1;
     attrs.writable = 1;
     reservation_t res;
-    error = mmap_new_pages_custom(&init_objects.vspace,
-                                  init_objects.page_dir_cap,
-                                  num_pages,
-                                  &attrs,
-                                  caps,
-                                  new_ptr,
-                                  &res);
-    if(error) {
-        ZF_LOGE("Failed to map new pages into parent");
-        free(caps);
-        return -5;
-    }
+    libprocess_set_status(mmap_new_pages_custom(&init_objects.vspace,
+                                                init_objects.page_dir_cap,
+                                                num_pages,
+                                                &attrs,
+                                                caps,
+                                                new_ptr,
+                                                &res));
+    libprocess_guard(libprocess_get_status(), -6, free_caps, 
+                     "Failed to map new pages into parent");
 
     /**
      * Then map the pages into the list of children
@@ -1150,12 +1017,9 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
             cspacepath_t path1, path2;
             vka_cspace_make_path(&init_objects.vka, caps[j], &path1);
             vka_cspace_alloc_path(&init_objects.vka, &path2);
-            error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
-            if(error) {
-                ZF_LOGE("Failed to copy cap for shared page.");
-                free(caps);
-                return -6;
-            }
+            libprocess_set_status(vka_cnode_copy(&path2, &path1, seL4_AllRights));
+            libprocess_guard(libprocess_get_status(), -6, cleanup,
+                             "Failed to copy cap for shared page.");
             caps[j] = path2.capPtr;
         } 
 
@@ -1166,31 +1030,28 @@ int process_connect_many_to_self_shmem(process_handle_t **handle_list,
 
         void *vaddr;
         reservation_t res; 
-        error = mmap_existing_pages_custom(&handle->vspace,
-                                           handle->page_dir.cptr,
-                                           num_pages,
-                                           &attrs,
-                                           caps,
-                                           &vaddr,
-                                           &res);
-        if(error) {
-            ZF_LOGE("Failed to share pages to child process");
-            free(caps);
-            return -7;
-        }
+        libprocess_set_status(mmap_existing_pages_custom(&handle->vspace,
+                                                         handle->page_dir.cptr,
+                                                         num_pages,
+                                                         &attrs,
+                                                         caps,
+                                                         &vaddr,
+                                                         &res));
+        libprocess_guard(libprocess_get_status(), -6, cleanup,
+                         "Failed to share pages to child process");
 
-        error = copy_shmem_to_proc(handle, vaddr, num_pages, conn_name);
-        if(error) {
-            ZF_LOGE("Failed to copy shemem data to child");
-            free(caps);
-            return -8;
-        }
-
+        libprocess_set_status(copy_shmem_to_proc(handle, vaddr, num_pages, conn_name));
+        libprocess_guard(libprocess_get_status(), -6, cleanup, "Failed to copy shemem data to child");
     }
 
 
     free(caps);
-    return 0;
+    libprocess_return_success();
+    cleanup:
+        /* TODO: If we fail, undo or set processes as invalid */
+    free_caps:
+        free(caps);
+    libprocess_epilogue();
 }
 
 
@@ -1200,50 +1061,28 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
                                   seL4_Word num_pages,
                                   const char *conn_name)
 {
-    UNUSED int error, i, j;
+    libprocess_prologue();
+    UNUSED int i, j;
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(handle_list == NULL || perms_list == NULL) {
-        ZF_LOGE("Null process handle or perms list passed");
-        return -2; /* TODO come up with error codes */
-    }
-
-    if(conn_name == NULL) {
-        ZF_LOGE("Null pointer to name passed");
-        return -3;
-    }
+    libprocess_check_arg(handle_list);
+    libprocess_check_arg(perms_list);
+    libprocess_check_arg(conn_name);
 
     seL4_CPtr *caps = malloc(sizeof(seL4_CPtr)*num_pages);
-    if(caps == NULL) {
-        ZF_LOGE("Failed to malloc temporary space for page caps");
-        goto failed_caps;
-    }
+    libprocess_check_malloc(caps, libprocess_epilogue);
 
     process_shared_objects_t *new_objs = malloc(sizeof(process_shared_objects_t));
-    if(new_objs == NULL) {
-        ZF_LOGE("Failed to malloc shared objects struct");
-        goto failed_new_objs;
-    }
+    libprocess_check_malloc(new_objs, free_caps);
 
     new_objs->obj_list = malloc(sizeof(vka_object_t)*num_pages);
-    if(new_objs->obj_list == NULL) {
-        ZF_LOGE("Failed to malloc bookkeeping space for pages");
-        goto failed_obj_list;
-    }
+    libprocess_check_malloc(new_objs->obj_list, free_new_objs);
 
 
     for(i = 0; i < num_pages; i++) {
-        error = vka_alloc_frame(&init_objects.vka, PAGE_BITS_4K, &new_objs->obj_list[i]);
-        if(error) {
-            ZF_LOGE("Failed to allocate a page of memory from vka");
-            goto failed;
-        }
+        libprocess_set_status(vka_alloc_frame(&init_objects.vka, PAGE_BITS_4K, &new_objs->obj_list[i]));
+        libprocess_guard(libprocess_get_status(), -6, failed, "Failed to allocate a page of memory from vka");
         caps[i] = new_objs->obj_list[i].cptr;
     }
 
@@ -1278,25 +1117,18 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
             cspacepath_t path1, path2;
             vka_cspace_make_path(&init_objects.vka, caps[j], &path1);
             vka_cspace_alloc_path(&init_objects.vka, &path2);
-            error = vka_cnode_copy(&path2, &path1, seL4_AllRights);
-            if(error) {
-                ZF_LOGE("Failed to copy cap for shared page.");
-                goto failed; 
-            }
+            libprocess_set_status(vka_cnode_copy(&path2, &path1, seL4_AllRights));
+            libprocess_guard(libprocess_get_status(), -6, failed, "Failed to copy cap for shared page.");
             caps[j] = path2.capPtr;
         }
 
         /**
          * Insert shared obj bookkeeping for this process handle
          */
-        process_shared_objects_ref_t *sh_obj_list_old = handle->shared_objects;
-        handle->shared_objects = malloc(sizeof(process_shared_objects_ref_t));
-        if(handle->shared_objects == NULL) {
-            ZF_LOGE("Failed to malloc memory for a shared object reference");
-            goto failed;
-        }
-        handle->shared_objects->next = sh_obj_list_old;
-        handle->shared_objects->ref = new_objs;
+        process_shared_objects_ref_t *tmp = malloc(sizeof(process_shared_objects_ref_t));
+        libprocess_check_malloc(tmp, failed);
+        tmp->ref = new_objs;
+        LINKED_LIST_PREPEND(tmp, handle->shared_objects);
 
 
         /* TODO allow executable mem sharing */
@@ -1307,39 +1139,32 @@ int process_connect_many_to_shmem(process_handle_t **handle_list,
         void *vaddr;
 
         reservation_t res; 
-        error = mmap_existing_pages_custom(&handle->vspace,
-                                           handle->page_dir.cptr,
-                                           num_pages,
-                                           &attrs,
-                                           caps,
-                                           &vaddr,
-                                           &res);
-        if(error) {
-            ZF_LOGE("Failed to share pages to child process");
-            goto failed;
-        }
+        libprocess_set_status(mmap_existing_pages_custom(&handle->vspace,
+                                                         handle->page_dir.cptr,
+                                                         num_pages,
+                                                         &attrs,
+                                                         caps,
+                                                         &vaddr,
+                                                         &res));
+        libprocess_guard(libprocess_get_status(), -6, failed, "Failed to share pages to child process");
         
-        error = copy_shmem_to_proc(handle, vaddr, num_pages, conn_name);
-        if(error) {
-            ZF_LOGE("Failed to copy shemem data to child");
-            goto failed;
-        }
-
+        libprocess_set_status(copy_shmem_to_proc(handle, vaddr, num_pages, conn_name));
+        libprocess_guard(libprocess_get_status(), -6, failed, "Failed to copy shemem data to child");
     }
 
-    return 0;
+    /* TODO: Should we be freeing caps? */
+    libprocess_return_success();
 
 failed:
     /**
      * TODO: free vka objs, free each proc sh obj ref
      */
-failed_obj_list:
     free(new_objs->obj_list);
-failed_new_objs:
+free_new_objs:
     free(new_objs);
-failed_caps:
+free_caps:
     free(caps);
-    return -1;
+    libprocess_epilogue();
 }
 
 

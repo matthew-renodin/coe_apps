@@ -5,6 +5,7 @@
 #include <atomic_sync/helpers.h>
 
 #include <process/process.h>
+#include <process/errors.h>
 
 extern int process_lib_lock_initialized;
 extern mutex_t process_lib_lock;
@@ -78,3 +79,21 @@ libprocess_epilogue:
 #define libprocess_epilogue() \
 libprocess_custom_epilogue() \
     libprocess_return_value(_libprocess_status)
+
+/******************************************************************************
+ * Convenience Checks
+ *****************************************************************************/
+#define libprocess_error_guard(condition, error, error_symbol) \
+    libprocess_guard(condition, error##_NUMBER, error_symbol, error##_STRING)
+
+#define libprocess_check_initialized() \
+    libprocess_error_guard(!init_check_initialized(), INITIALIZATION_ERROR, libprocess_epilogue)
+
+#define libprocess_check_arg(arg) \
+    libprocess_error_guard((arg) == NULL, NULL_ARG_ERROR, libprocess_epilogue)
+
+#define libprocess_check_malloc(obj, symbol) \
+    libprocess_error_guard((obj) == NULL, MALLOC_ERROR, symbol)
+
+#define libprocess_check_state(handle) \
+    libprocess_error_guard(handle->state != PROCESS_INIT, STATE_ERROR, libprocess_epilogue)
