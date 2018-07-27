@@ -23,17 +23,7 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 #include <process/sync.h>
-
-/* Definition of generic linked list operations */
-#define LINKED_LIST_PREPEND(object, head) do { \
-    object->next = head; \
-    head = object; \
-} while(0)
-
-#define LINKED_LIST_POP(object, head) do {\
-    object = head; \
-    head = object->next; \
-} while(0)
+#include <process/internal.h>
 
 
 static int init_ep_obj(process_ep_conn_t *conn)
@@ -61,8 +51,6 @@ static int init_notif_obj(process_ep_conn_t *conn)
     libprocess_return_success();
     libprocess_epilogue();
 }
-
-
 
 
 static int init_conn_obj(process_conn_type_t typ,
@@ -94,6 +82,7 @@ static int init_conn_obj(process_conn_type_t typ,
     libprocess_epilogue();
 }
 
+
 int process_create_conn_obj(process_conn_type_t typ,
                             const char *name,
                             process_conn_obj_attr_t *attr,
@@ -124,53 +113,50 @@ failed_init:
 }
 
 
-/**
- *  Convenience function assumes valid args and does not worry about locking 
- **/
-static inline void set_dst_cspacepath_from_handle(cspacepath_t *dst, process_handle_t *handle) {
-    dst->root = handle->cnode.cptr;
-    dst->capDepth = handle->attrs.cnode_size_bits;
-    dst->capPtr = handle->cnode_next_free;
-}
-
-/**
- * Assumes you have error checked args
- */
-static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
-                                         seL4_CPtr new_cap,
-                                         seL4_CapRights_t perms)
-{
-    libprocess_prologue();
-    seL4_Word slot = seL4_CapNull;
-
-    cspacepath_t dst, src;
-    set_dst_cspacepath_from_handle(&dst, handle);
-
-    vka_cspace_make_path(&init_objects.vka, new_cap, &src);
-    libprocess_set_status(vka_cnode_copy(&dst, &src, perms));
-    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, 
-                     "Failed to copy cap into child cnode.");
-    slot = handle->cnode_next_free++;
-    
-    libprocess_custom_epilogue()
-    libprocess_return_value(libprocess_get_status() == 0 ? slot : seL4_CapNull);
-}
-
-/**
- * Assumes you have error checked args
- */
-static int delete_cap_from_last_slot(process_handle_t *handle)
+static int cleanup_ep_obj(process_ep_conn_t *conn)
 {
     libprocess_prologue();
 
-    --handle->cnode_next_free;
-    
-    cspacepath_t dst;
-    set_dst_cspacepath_from_handle(&dst, handle);
-    seL4_CNode_Delete(dst.root, dst.capPtr, dst.capDepth);
+    vka_free_object(&init_objects.vka, &conn->vka_obj);
 
-    libprocess_return_value(libprocess_get_status());
+    libprocess_return_success();
+    libprocess_epilogue();
 }
+
+
+process_free_conn_obj(process_conn_obj_t **obj)
+{
+    libprocess_prologue();
+    libprocess_check_arg(obj);
+    libprocess_check_arg(*obj);
+    libprocess_guard((*obj)->ref_count > 0, -1, libprocess_epilogue,
+                     "Cannot free object if child processes reference it.");
+    
+    switch((*obj)->typ) {
+        case PROCESS_ENDPOINT:
+            libprocess_set_status(cleanup_ep_obj(&(*obj)->obj.ep));
+            break;
+        case PROCESS_NOTIFICATION:
+            libprocess_set_status(cleanup_ep_obj(&(*obj)->obj.notif));
+            break;
+        case PROCESS_SHARED_MEMORY:
+            ZF_LOGF("UNIMPLEMENTED");
+            break;
+        default:
+               libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
+    }
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue,
+                     "Failed to cleanup conn obj");
+
+    free(*obj);
+    *obj = NULL;
+
+    libprocess_return_success();
+    libprocess_epilogue();
+}
+
+
+
 
 
 /**
@@ -192,7 +178,7 @@ static inline int copy_cptr_to_proc(process_handle_t *handle,
 
     endpoint_data__init(ep_data);
     ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
+    ep_data->cap = libprocess_copy_cap_next_slot(handle, ep_cap, perms);
     libprocess_guard(ep_data->cap == seL4_CapNull, -2, free_endpoint,
                      "Failed to copy ep cap");
 

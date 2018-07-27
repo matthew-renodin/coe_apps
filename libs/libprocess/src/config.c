@@ -43,74 +43,9 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 #include <process/sync.h>
+#include <process/internal.h>
 
-/* Definition of generic linked list operations */
-#define LINKED_LIST_PREPEND(object, head) do { \
-    object->next = head; \
-    head = object; \
-} while(0)
 
-#define LINKED_LIST_POP(object, head) do {\
-    object = head; \
-    head = object->next; \
-} while(0)
-
-/**
- * Definition for function pointer type.
- * Generic copy cap into process.
- */
-typedef int (copy_cap_to_proc_func_t)(process_handle_t *handle,
-                                      seL4_CPtr cap_to_copy,
-                                      seL4_CapRights_t perms,
-                                      const char* conn_name);
-
-/**
- *  Convenience function assumes valid args and does not worry about locking 
- **/
-static inline void set_dst_cspacepath_from_handle(cspacepath_t *dst, process_handle_t *handle) {
-    dst->root = handle->cnode.cptr;
-    dst->capDepth = handle->attrs.cnode_size_bits;
-    dst->capPtr = handle->cnode_next_free;
-}
-
-/**
- * Assumes you have error checked args
- */
-static seL4_CPtr copy_cap_into_next_slot(process_handle_t *handle,
-                                         seL4_CPtr new_cap,
-                                         seL4_CapRights_t perms)
-{
-    libprocess_prologue();
-    seL4_Word slot = seL4_CapNull;
-
-    cspacepath_t dst, src;
-    set_dst_cspacepath_from_handle(&dst, handle);
-
-    vka_cspace_make_path(&init_objects.vka, new_cap, &src);
-    libprocess_set_status(vka_cnode_copy(&dst, &src, perms));
-    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, 
-                     "Failed to copy cap into child cnode.");
-    slot = handle->cnode_next_free++;
-    
-    libprocess_custom_epilogue()
-    libprocess_return_value(libprocess_get_status() == 0 ? slot : seL4_CapNull);
-}
-
-/**
- * Assumes you have error checked args
- */
-static int delete_cap_from_last_slot(process_handle_t *handle)
-{
-    libprocess_prologue();
-
-    --handle->cnode_next_free;
-    
-    cspacepath_t dst;
-    set_dst_cspacepath_from_handle(&dst, handle);
-    seL4_CNode_Delete(dst.root, dst.capPtr, dst.capDepth);
-
-    libprocess_return_value(libprocess_get_status());
-}
 
 /**
  * Convenience function for copying ep and notifications to process
@@ -131,7 +66,7 @@ static inline int copy_cptr_to_proc(process_handle_t *handle,
 
     endpoint_data__init(ep_data);
     ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    ep_data->cap = copy_cap_into_next_slot(handle, ep_cap, perms);
+    ep_data->cap = libprocess_copy_cap_next_slot(handle, ep_cap, perms);
     libprocess_guard(ep_data->cap == seL4_CapNull, -2, free_endpoint,
                      "Failed to copy ep cap");
 
@@ -141,8 +76,6 @@ static inline int copy_cptr_to_proc(process_handle_t *handle,
         free(ep_data);
     libprocess_epilogue();
 }
-
-
 /**
  * Assumes you have error checked args
  */
@@ -211,16 +144,16 @@ static int copy_irq_to_proc(process_handle_t *handle,
 
     irq_data__init(irq_data);
     irq_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    irq_data->irq_cap = copy_cap_into_next_slot(handle, irq_cap, seL4_AllRights);
+    irq_data->irq_cap = libprocess_copy_cap_next_slot(handle, irq_cap, seL4_AllRights);
     libprocess_guard(irq_data->irq_cap != seL4_CapNull, -2, free_data, "Failed to copy IRQ cap");
-    irq_data->ep_cap = copy_cap_into_next_slot(handle, ep_cap, seL4_AllRights);
+    irq_data->ep_cap = libprocess_copy_cap_next_slot(handle, ep_cap, seL4_AllRights);
     libprocess_guard(irq_data->ep_cap != seL4_CapNull, -2, uncopy_irq_cap, "Failed to copy EP cap");
     irq_data->number = irq_number;
 
     LINKED_LIST_PREPEND(irq_data, handle->init_data.irq_list_head);
     libprocess_return_success();
     uncopy_irq_cap:
-        delete_cap_from_last_slot(handle);
+        libprocess_delete_cap_last_slot(handle);
     free_data:
         free(irq_data);
     libprocess_epilogue();
@@ -258,7 +191,7 @@ static int copy_devmem_to_proc(process_handle_t *handle,
                          "Failed to malloc new space for device caps");
 
         for(current_cap = 0; current_cap < num_pages; current_cap++) {
-            new_caps[current_cap] = copy_cap_into_next_slot(handle, caps[current_cap], seL4_AllRights); 
+            new_caps[current_cap] = libprocess_copy_cap_next_slot(handle, caps[current_cap], seL4_AllRights); 
             libprocess_guard(new_caps[current_cap] != seL4_CapNull, -2, uncopy_caps, "Failed to copy cap");
         }
 
@@ -280,7 +213,7 @@ static int copy_devmem_to_proc(process_handle_t *handle,
 
     uncopy_caps:
         --current_cap; // current_cap failed and does not need uncopying
-        for(; current_cap >= 0; --current_cap) { delete_cap_from_last_slot(handle); }
+        for(; current_cap >= 0; --current_cap) { libprocess_delete_cap_last_slot(handle); }
         free(new_caps);
     free_data:
         free(devmem_data);
@@ -669,7 +602,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     
         untyped_data__init(ut_data);
         ut_data->size = size_bits;
-        ut_data->cap = copy_cap_into_next_slot(handle, ut->obj.cptr, seL4_AllRights);
+        ut_data->cap = libprocess_copy_cap_next_slot(handle, ut->obj.cptr, seL4_AllRights);
         libprocess_error_guard(ut_data->cap == seL4_CapNull, CAP_COPY_ERROR, failed_cap_copy);
         
         /* Push the ut data onto the list */
@@ -683,7 +616,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     for(; i>=0; --i) {
         LINKED_LIST_POP(ut, handle->untyped_allocation_list);
         LINKED_LIST_POP(ut_data, handle->init_data.untyped_list_head);
-        delete_cap_from_last_slot(handle);
+        libprocess_delete_cap_last_slot(handle);
     failed_cap_copy:
         free(ut_data);
     failed_data_malloc:
