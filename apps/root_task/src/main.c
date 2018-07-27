@@ -118,10 +118,10 @@ UNUSED static void test_libthread(void) {
 
 
 UNUSED static void test_libprocess(void) {
-    int error, i;
-    process_handle_t test_procs[NUM_TEST_PROCS];
-    process_handle_t *test_procs_refs[NUM_TEST_PROCS];
-    process_handle_t *test_procs_bad_refs[NUM_TEST_PROCS + 1];
+    UNUSED int error, i;
+    UNUSED process_handle_t test_procs[NUM_TEST_PROCS];
+    UNUSED process_handle_t *test_procs_refs[NUM_TEST_PROCS];
+    UNUSED process_handle_t *test_procs_bad_refs[NUM_TEST_PROCS + 1];
     UNUSED seL4_CapRights_t test_procs_perms[NUM_TEST_PROCS];
     
     ZF_LOGD("Starting libprocess test.");
@@ -156,61 +156,20 @@ UNUSED static void test_libprocess(void) {
 
     test_procs_bad_refs[NUM_TEST_PROCS] = NULL;
 
-    void *shmem_addr;
+    UNUSED process_conn_obj_t *ep;
+    process_create_conn_obj(PROCESS_ENDPOINT, "testep", NULL, &ep);
 
-    error = process_connect_many_to_self_shmem(NULL,
-                                               test_procs_perms,
-                                               NUM_TEST_PROCS,
-                                               4,
-                                               "shmem-many-self-test-1",
-                                               &shmem_addr);
-    assert(error != 0);
+    for(i = 0; i < NUM_TEST_PROCS; i++) {
+        error = process_connect(&test_procs[i], ep, (process_conn_perms_t){.r=1, .w=1, .g=1});
+        assert(error == 0);
 
-    error = process_connect_many_to_self_shmem(test_procs_refs,
-                                               NULL,
-                                               NUM_TEST_PROCS,
-                                               4,
-                                               "shmem-many-self-test-2",
-                                               &shmem_addr);
-    assert(error != 0);
-
-    error = process_connect_many_to_self_shmem(test_procs_refs,
-                                               test_procs_perms,
-                                               0,
-                                               4,
-                                               "shmem-many-self-test-3",
-                                               &shmem_addr);
-    assert(error == 0);
-    /* TODO check and make sure that nothing was allocated */
-
-    error = process_connect_many_to_self_shmem(test_procs_refs,
-                                               test_procs_perms,
-                                               NUM_TEST_PROCS,
-                                               0,
-                                               "shmem-many-self-test-4",
-                                               &shmem_addr);
-    assert(error == 0);
-    /* TODO check and make sure that nothing was allocated */
-
-    error = process_connect_many_to_self_shmem(test_procs_refs,
-                                               test_procs_perms,
-                                               NUM_TEST_PROCS,
-                                               0,
-                                               NULL,
-                                               &shmem_addr);
-    assert(error != 0);
-
-
-    error = process_connect_many_to_self_shmem(test_procs_bad_refs,
-                                               test_procs_perms,
-                                               NUM_TEST_PROCS,
-                                               4,
-                                               "shmem-many-self-test",
-                                               &shmem_addr);
-    assert(error == 0);
+        error = process_run(&test_procs[i], 1, (char**)&test_procs[i].name);
+        assert(error == 0);
+    }
 
 
 
+    
 
     ZF_LOGD("Finished libprocess test.");
 }

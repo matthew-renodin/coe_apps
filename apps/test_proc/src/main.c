@@ -51,6 +51,22 @@ int main(int argc, char **argv) {
     error = init_process();
     ZF_LOGF_IF(error, "Failed to init child process");
 
+    seL4_CPtr testep = init_lookup_endpoint("testep");
+
+    if(strcmp(argv[0], "test_proc1") == 0) {
+        while(1) {
+            seL4_Word badge;
+            seL4_MessageInfo_t msg = seL4_Recv(testep, &badge);
+            seL4_Word num = seL4_MessageInfo_get_label(msg);
+            ZF_LOGI("Recieved: %lu", num);
+            seL4_Reply(seL4_MessageInfo_new(num+100,0,0,0));
+        }
+    } else {
+        seL4_MessageInfo_t msg = seL4_Call(testep, seL4_MessageInfo_new((seL4_Word)argv[0][9],0,0,0));
+        
+        ZF_LOGI("Got Reply: %lu", seL4_MessageInfo_get_label(msg));
+    }
+
 
     return 0;
 }

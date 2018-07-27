@@ -440,21 +440,25 @@ int init_process(void) {
 
     ZF_LOGW_IF(j != num_frames, "Not all of the existing frames were copied.");
 
-    /**
-     * Setup vspace object.
-     */
-    error = sel4utils_bootstrap_vspace(&init_objects.vspace,
-                                       &vspace_bootstrap_data,
-                                       init_objects.page_dir_cap,
-                                       &init_objects.vka,
-                                       NULL,
-                                       NULL,
-                                       (void**)existing_frames);
-    free(existing_frames);
-    if(error) {
-        ZF_LOGE("Failed to setup vspace object");
-        init_unlock_objects();
-        return -4;
+
+    if(total_ut_memory > 0) { /** TODO find a better number here */
+        /**
+         * Setup vspace object.
+         */
+        error = sel4utils_bootstrap_vspace(&init_objects.vspace,
+                                           &vspace_bootstrap_data,
+                                           init_objects.page_dir_cap,
+                                           &init_objects.vka,
+                                           NULL,
+                                           NULL,
+                                           (void**)existing_frames);
+        free(existing_frames);
+        if(error) {
+            ZF_LOGE("Failed to setup vspace object");
+            init_unlock_objects();
+            return -4;
+        }
+        
     }
 
     /**

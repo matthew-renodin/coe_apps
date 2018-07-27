@@ -39,6 +39,77 @@
 #include <thread/thread.h>
 
 
+typedef enum {
+    PROCESS_INIT,
+    PROCESS_RUNNING,
+    PROCESS_DESTROYED
+} process_state_t;
+
+typedef enum {
+    PROCESS_ENDPOINT,
+    PROCESS_NOTIFICATION,
+    PROCESS_SHARED_MEMORY,
+    PROCESS_MAX_NUM_CONN_TYPES
+} process_conn_type_t;
+
+typedef struct {
+    unsigned int r: 1;
+    unsigned int w: 1;
+    unsigned int x: 1;
+    unsigned int g: 1;
+} process_conn_perms_t;
+
+
+typedef struct process_conn_obj_attr {
+    seL4_Word num_pages;
+} process_conn_obj_attr_t;
+
+
+typedef struct process_ep_conn {
+    vka_object_t vka_obj;
+} process_ep_conn_t;
+
+typedef struct process_shmem_conn {
+    seL4_CPtr *caps;
+    seL4_Word num_pages;
+} process_shmem_conn_t;
+
+typedef struct process_conn_obj {
+    process_conn_type_t typ;
+    const char *name;
+    seL4_Word ref_count;
+
+    union {
+        process_ep_conn_t ep;
+        process_ep_conn_t notif;
+        process_shmem_conn_t shmem;
+    } obj;
+} process_conn_obj_t;
+
+
+
+
+typedef struct process_shared_objects {
+    seL4_Word ref_count;
+    vka_object_t *obj_list;
+    seL4_Word num_objs;
+} process_shared_objects_t;
+
+typedef struct process_shared_objects_ref {
+    struct process_shared_objects_ref *next;
+    process_shared_objects_t *ref;
+    process_conn_obj_t *ref2; //TODO
+} process_shared_objects_ref_t;
+
+typedef struct process_object {
+    struct process_object *next;
+    vka_object_t obj;
+} process_object_t;
+
+
+
+
+
 /**
  *
  */
@@ -54,36 +125,6 @@ typedef struct process_attr {
     bool create_fault_ep;
     seL4_CPtr existing_fault_ep;
 } process_attr_t;
-
-
-
-typedef struct process_shared_objects {
-    seL4_Word ref_count;
-    vka_object_t *obj_list;
-    seL4_Word num_objs;
-} process_shared_objects_t;
-
-
-typedef struct process_shared_objects_ref {
-    struct process_shared_objects_ref *next;
-    process_shared_objects_t *ref;    
-} process_shared_objects_ref_t;
-
-
-/**
- *
- */
-typedef struct process_object {
-    struct process_object *next;
-    vka_object_t obj;
-} process_object_t;
-
-
-typedef enum {
-    PROCESS_INIT,
-    PROCESS_RUNNING,
-    PROCESS_DESTROYED
-} process_state_t;
 
 
 
@@ -130,4 +171,3 @@ typedef struct process_handle {
     InitData init_data;
 
 } process_handle_t;
-

@@ -441,25 +441,31 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 
 
-/* ~~~ TODO: PHASE 2 API DESIGN ~~~ */
-//int process_connect_ep_self
 
-/* Simple defaults */
-//int process_create_default(process_handle_t * handle);
-//int process_connect_ep_one_way(process_handle_t * handle1, process_handle_t *handle2);
-//int process_connect_ep_two_way(process_handle_t * handle1, process_handle_t *handle2);
 
-/* Manual configuration */
-//int process_add_thread(process_handle_t* handle ...);
-//int process_add_endpoint(process_handle_t *handle, vka_object_t ep);
-//int process_add_notification(process_handle_t *handle, vka_object_t ep);
-//int process_map_pages(process_handle_t *handle, void *vaddr, seL4_Word num_pages);
 
-/* Sync stuff */
-//int process_add_semaphore(...)
 
-/* Debugging, listing */
-//void process_print_children(void);
 
-//process kill
+
+
+
+
+
+
+/******************************************************************************
+ * CONNECTION API v2 
+ *****************************************************************************/
+
+
+int process_create_conn_obj(process_conn_type_t typ,
+                            const char *name,
+                            process_conn_obj_attr_t *attr,
+                            process_conn_obj_t **obj);
+
+int process_free_conn_obj(process_conn_obj_t **obj);
+
+int process_connect(process_handle_t *handle,
+                    process_conn_obj_t *obj,
+                    process_conn_perms_t perms);
+
 
