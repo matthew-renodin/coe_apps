@@ -14,4 +14,4 @@
 #define MALLOC_ERROR_STRING "Failed to malloc data"
 
 #define STATE_ERROR_NUMBER -5
-#define STATE_ERROR_STRING "Process is not in initialization state. Is the process running or corrupted?"
+#define STATE_ERROR_STRING "Process is not in proper state"

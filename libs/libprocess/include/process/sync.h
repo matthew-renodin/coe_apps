@@ -66,8 +66,7 @@ if (unlikely((condition))) { \
     goto error_symbol;\
 }
 
-#define libprocess_custom_epilogue() \
-libprocess_epilogue:
+#define libprocess_custom_epilogue() libprocess_epilogue:
 
 #define libprocess_return_value(value) \
     libprocess_lock_release(); \
@@ -95,5 +94,5 @@ libprocess_custom_epilogue() \
 #define libprocess_check_malloc(obj, symbol) \
     libprocess_error_guard((obj) == NULL, MALLOC_ERROR, symbol)
 
-#define libprocess_check_state(handle) \
-    libprocess_error_guard(handle->state != PROCESS_INIT, STATE_ERROR, libprocess_epilogue)
+#define libprocess_check_state(handle, required_state) \
+    libprocess_error_guard(handle->state != required_state, STATE_ERROR, libprocess_epilogue)
