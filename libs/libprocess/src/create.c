@@ -49,18 +49,11 @@ int process_create(const char *elf_file_name,
 
     libprocess_prologue();
 
-    libprocess_guard(!init_check_initialized(), -1, libprocess_epilogue,
-                     "Init objects (vka, vspace) have not been setup.\n"
-                     "Run init_process or init_root_task to setup.");
+    libprocess_check_initialized();
 
-    libprocess_guard(handle == NULL, -2, libprocess_epilogue,
-                     "Null process handle pointer passed to process_create.");
-
-    libprocess_guard(proc_name == NULL, -3, libprocess_epilogue,
-                     "Null process name passed to process_create.");
-
-    libprocess_guard(elf_file_name == NULL, -4, libprocess_epilogue,
-                     "Null file name passed to process_create.");
+    libprocess_check_arg(handle);
+    libprocess_check_arg(proc_name);
+    libprocess_check_arg(elf_file_name);
 
     memset((void *)handle, 0, sizeof(handle));
 

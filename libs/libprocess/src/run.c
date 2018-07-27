@@ -22,6 +22,7 @@
 #include <init/init.h>
 #include <mmap/mmap.h>
 #include <process/process.h>
+#include <process/sync.h>
 
 #define FREE_INIT_LIST(TYPE, LIST) do { \
     TYPE *lst = LIST; \
@@ -52,7 +53,6 @@ static void free_init_data(InitData* data) {
 
     init_data__init(data);
 }
-
 
 static inline int 
 threadsafe_stack_write_constant(lockvspace_t *lockvspace, vspace_t *current_vspace, vspace_t *target_vspace,
@@ -86,24 +86,16 @@ threadsafe_stack_copy_args(lockvspace_t *lockvspace, vspace_t *current_vspace, v
 
 int process_run(process_handle_t *handle, int argc, char *argv[])
 {
-    int error;
+    libprocess_prologue();
+    UNUSED int error;
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
+    libprocess_check_initialized();
 
-    if(handle == NULL || handle->entry_point == NULL || handle->main_thread->stack_vaddr == NULL) {
-        ZF_LOGE("Invalid process handle pointer passed to process_run.");
-        return -2; /* TODO come up with error codes */
-    }
+    libprocess_check_arg(handle);
+    libprocess_check_arg(handle->entry_point);
+    libprocess_check_arg(handle->main_thread->stack_vaddr);
 
-    if(handle->state != PROCESS_INIT) {
-        ZF_LOGW("Process has already been started.");
-        return -3; /* TODO come up with error codes */
-    }
+    libprocess_check_state(handle, PROCESS_INIT);
     handle->state = PROCESS_RUNNING;
 
     handle->init_data.cnode_next_free = handle->cnode_next_free;
@@ -118,17 +110,15 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
 
     void *init_data_vaddr;
     reservation_t res; 
-    error = mmap_new_pages_custom(&handle->vspace,
-                                  handle->page_dir.cptr,
-                                  init_data_len / PAGE_SIZE_4K,
-                                  &mmap_attr_4k_data,
-                                  NULL,
-                                  &init_data_vaddr,
-                                  &res);
-    if(error) {
-        ZF_LOGE("Failed to allocate space for the init data");
-        return -5;
-    }
+    libprocess_set_status(mmap_new_pages_custom(&handle->vspace,
+                                                handle->page_dir.cptr,
+                                                init_data_len / PAGE_SIZE_4K,
+                                                &mmap_attr_4k_data,
+                                                NULL,
+                                                &init_data_vaddr,
+                                                &res));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to allocate space for the init data");
 
     
     void * packed_init_data = vspace_share_mem(&handle->vspace,
@@ -138,10 +128,8 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
                                                PAGE_BITS_4K,
                                                seL4_AllRights,
                                                1); /* should this be cacheable? */
-    if(packed_init_data == NULL) {
-        ZF_LOGE("Failed to share init_data.");
-        return -6;
-    }
+    libprocess_guard(packed_init_data == NULL, -6, libprocess_epilogue, 
+                     "Failed to share init_data.");
 
     /**
      * Then write the packed data
@@ -181,36 +169,32 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      * help it find/unpack its init data.
      */
     AUTOFREE char *heap_addr_env;
-    error = asprintf(&heap_addr_env,
-                     "HEAP_ADDR=0x%"PRIxPTR"",
-                     handle->heap_vaddr);
-    if (error == -1) {
-        return -1;
-    }
+    libprocess_set_status(asprintf(&heap_addr_env,
+                                   "HEAP_ADDR=0x%"PRIxPTR"",
+                                   handle->heap_vaddr));
+    libprocess_guard(libprocess_get_status() == -1, -6, libprocess_epilogue, 
+                     "Failed to allocate environment variable for child");
 
     AUTOFREE char *heap_size_env;
-    error = asprintf(&heap_size_env,
-                     "HEAP_SIZE=%lu",
-                     (long unsigned)handle->attrs.heap_size_pages * PAGE_SIZE_4K);
-    if (error == -1) {
-        return -1;
-    }
+    libprocess_set_status(asprintf(&heap_size_env,
+                          "HEAP_SIZE=%lu",
+                          (long unsigned)handle->attrs.heap_size_pages * PAGE_SIZE_4K));
+    libprocess_guard(libprocess_get_status() == -1, -6, libprocess_epilogue, 
+                     "Failed to allocate environment variable for child");
 
     AUTOFREE char *init_data_addr_env;
-    error = asprintf(&init_data_addr_env,
-                     "INIT_DATA_ADDR=0x%"PRIxPTR"",
-                     init_data_vaddr);
-    if (error == -1) {
-        return -1;
-    }
+    libprocess_set_status(asprintf(&init_data_addr_env,
+                                   "INIT_DATA_ADDR=0x%"PRIxPTR"",
+                                   init_data_vaddr));
+    libprocess_guard(libprocess_get_status() == -1, -6, libprocess_epilogue, 
+                     "Failed to allocate environment variable for child");
 
     AUTOFREE char *init_data_size_env;
-    error = asprintf(&init_data_size_env,
-                     "INIT_DATA_SIZE=%lu",
-                     (long unsigned)raw_size);
-    if (error == -1) {
-        return -1;
-    }
+    libprocess_set_status(asprintf(&init_data_size_env,
+                                   "INIT_DATA_SIZE=%lu",
+                                   (long unsigned)raw_size));
+    libprocess_guard(libprocess_get_status() == -1, -6, libprocess_epilogue, 
+                     "Failed to allocate environment variable for child");
 
 
     char *envp[] = {heap_addr_env, heap_size_env, init_data_addr_env, init_data_size_env};
@@ -221,17 +205,15 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      * Copy the elf headers
      */
     uintptr_t at_phdr;
-    error = threadsafe_stack_write(&init_objects.lockvspace,
-                                   &init_objects.vspace,
-                                   &handle->vspace,
-                                   &init_objects.vka,
-                                   handle->elf_phdrs,
-                                   handle->num_elf_phdrs * sizeof(Elf_Phdr),
-                                   &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to write the elf headers to the stack.");
-        return -1;
-    }
+    libprocess_set_status(threadsafe_stack_write(&init_objects.lockvspace,
+                                                 &init_objects.vspace,
+                                                 &handle->vspace,
+                                                 &init_objects.vka,
+                                                 handle->elf_phdrs,
+                                                 handle->num_elf_phdrs * sizeof(Elf_Phdr),
+                                                 &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write the elf headers to the stack.");
     at_phdr = initial_stack_pointer;
 
     /**
@@ -261,46 +243,44 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
     auxv[4].a_un.a_val = handle->sysinfo;
 
     seL4_UserContext context = {0};
-    uintptr_t dest_argv[argc];
-    uintptr_t dest_envp[envc];
+    AUTOFREE uintptr_t *dest_argv = malloc(sizeof(uintptr_t) * argc);
+    libprocess_check_malloc(dest_argv, libprocess_epilogue);
+    AUTOFREE uintptr_t *dest_envp = malloc(sizeof(uintptr_t) * envc);
+    libprocess_check_malloc(dest_envp, libprocess_epilogue);
 
     /* Copy the argv onto the stack. */
-    error = threadsafe_stack_copy_args(&init_objects.lockvspace,
-                                       &init_objects.vspace,
-                                       &handle->vspace,
-                                       &init_objects.vka,
-                                       argc,
-                                       argv,
-                                       dest_argv,
-                                       &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to copy argv onto the stack.");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_copy_args(&init_objects.lockvspace,
+                                                     &init_objects.vspace,
+                                                     &handle->vspace,
+                                                     &init_objects.vka,
+                                                     argc,
+                                                     argv,
+                                                     dest_argv,
+                                                     &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to copy argv onto the stack.");
 
     /* Copy the env onto the stack */
-    error = threadsafe_stack_copy_args(&init_objects.lockvspace,
+    libprocess_set_status(threadsafe_stack_copy_args(&init_objects.lockvspace,
                                        &init_objects.vspace,
                                        &handle->vspace,
                                        &init_objects.vka,
                                        envc,
                                        envp,
                                        dest_envp,
-                                       &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to copy env onto the stack.");
-        return error;
-    }
+                                       &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to copy env onto the stack.");
 
     /**
      * We need to make sure the stack is aligned to a double word boundary
      * after we push on everything else below this point.
      * First, work out how much we are going to push
      */
-    size_t to_push = 5 * sizeof(seL4_Word) +    /* constants */
-                    sizeof(auxv[0]) * auxc +    /* aux */
-                    sizeof(dest_argv) +         /* args */
-                    sizeof(dest_envp);          /* env */
+    size_t to_push = 5 * sizeof(seL4_Word) +              /* constants */
+                    sizeof(auxv[0]) * auxc +              /* aux */
+                    sizeof(dest_argv[0]) * argc +         /* args */
+                    sizeof(dest_envp[0]) * envc;          /* env */
     uintptr_t hypothetical_stack_pointer = initial_stack_pointer - to_push;
     uintptr_t rounded_stack_pointer = ALIGN_DOWN(hypothetical_stack_pointer, STACK_CALL_ALIGNMENT);
     ptrdiff_t stack_rounding = hypothetical_stack_pointer - rounded_stack_pointer;
@@ -313,130 +293,111 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      */
 
     /* Null terminate aux */
-    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
-                                            &init_objects.vspace,
-                                            &handle->vspace,
-                                            &init_objects.vka,
-                                            0,
-                                            &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
-    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
-                                            &init_objects.vspace,
-                                            &handle->vspace,
-                                            &init_objects.vka,
-                                            0,
-                                            &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                                          &init_objects.vspace,
+                                                          &handle->vspace,
+                                                          &init_objects.vka,
+                                                          0,
+                                                          &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
+
+    libprocess_set_status(threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                                          &init_objects.vspace,
+                                                          &handle->vspace,
+                                                          &init_objects.vka,
+                                                          0,
+                                                          &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* write aux */
-    error = threadsafe_stack_write(&init_objects.lockvspace,
-                                   &init_objects.vspace,
-                                   &handle->vspace,
-                                   &init_objects.vka,
-                                   auxv,
-                                   sizeof(auxv[0]) * auxc,
-                                   &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write(&init_objects.lockvspace,
+                                                  &init_objects.vspace,
+                                                  &handle->vspace,
+                                                  &init_objects.vka,
+                                                  auxv,
+                                                  sizeof(auxv[0]) * auxc,
+                                                  &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* Null terminate environment */
-    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
-                                            &init_objects.vspace,
-                                            &handle->vspace,
-                                            &init_objects.vka,
-                                            0,
-                                            &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                                          &init_objects.vspace,
+                                                          &handle->vspace,
+                                                          &init_objects.vka,
+                                                          0,
+                                                          &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* write environment */
-    error = threadsafe_stack_write(&init_objects.lockvspace,
-                                   &init_objects.vspace,
-                                   &handle->vspace,
-                                   &init_objects.vka,
-                                   dest_envp,
-                                   sizeof(dest_envp),
-                                   &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write(&init_objects.lockvspace,
+                                                 &init_objects.vspace,
+                                                 &handle->vspace,
+                                                 &init_objects.vka,
+                                                 dest_envp,
+                                                 sizeof(dest_envp[0]) * envc,
+                                                 &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* Null terminate arguments */
-    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
-                                            &init_objects.vspace,
-                                            &handle->vspace,
-                                            &init_objects.vka,
-                                            0,
-                                            &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                                          &init_objects.vspace,
+                                                          &handle->vspace,
+                                                          &init_objects.vka,
+                                                          0,
+                                                          &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* write arguments */
-    error = threadsafe_stack_write(&init_objects.lockvspace,
-                                   &init_objects.vspace,
-                                   &handle->vspace,
-                                   &init_objects.vka,
-                                   dest_argv,
-                                   sizeof(dest_argv),
-                                   &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write(&init_objects.lockvspace,
+                                                 &init_objects.vspace,
+                                                 &handle->vspace,
+                                                 &init_objects.vka,
+                                                 dest_argv,
+                                                 sizeof(dest_argv[0]) * argc,
+                                                 &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     /* Push argument count */
-    error = threadsafe_stack_write_constant(&init_objects.lockvspace,
-                                            &init_objects.vspace,
-                                            &handle->vspace,
-                                            &init_objects.vka,
-                                            argc,
-                                            &initial_stack_pointer);
-    if (error) {
-        ZF_LOGE("Failed to arugments to new process stack");
-        return error;
-    }
+    libprocess_set_status(threadsafe_stack_write_constant(&init_objects.lockvspace,
+                                                          &init_objects.vspace,
+                                                          &handle->vspace,
+                                                          &init_objects.vka,
+                                                          argc,
+                                                          &initial_stack_pointer));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write arugments to new process stack");
 
     assert(initial_stack_pointer % (2 * sizeof(seL4_Word)) == 0);
 
     /**
      * Setup the initial register values for our process
      */
-    error = sel4utils_arch_init_context(handle->entry_point, 
-                                        (void *) initial_stack_pointer,
-                                        &context);
-    if(error) {
-        ZF_LOGE("Failed to initialize process context");
-        return error;
-    }
+    libprocess_set_status(sel4utils_arch_init_context(handle->entry_point, 
+                                                      (void *) initial_stack_pointer,
+                                                      &context));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to initialize process context");
 
     /**
      * Start the thread running.
      */
-    error = seL4_TCB_WriteRegisters(handle->main_thread->tcb.cptr,
+    libprocess_set_status(seL4_TCB_WriteRegisters(handle->main_thread->tcb.cptr,
                                     1, /* Resume */
                                     0, /* Arch flags */
                                     sizeof(context)/sizeof(seL4_Word),
-                                    &context);
-    if(error) {
-        ZF_LOGE("Failed to write registers for new process");
-        return error;
-    }
+                                    &context));
+    libprocess_guard(libprocess_get_status(), -6, libprocess_epilogue, 
+                     "Failed to write registers for new process");
 
-
-   return 0; 
+   libprocess_return_success();
+   libprocess_epilogue();
 }
 
 

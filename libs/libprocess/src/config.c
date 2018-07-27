@@ -370,7 +370,7 @@ static int process_map_device_pages_optional_caps(process_handle_t *handle,
     libprocess_check_arg(handle);
     libprocess_check_arg(device_name);
 
-    libprocess_check_state(handle);
+    libprocess_check_state(handle, PROCESS_INIT);
 
     ZF_LOGW_IF(!IS_ALIGNED((seL4_Word)paddr, page_bits),
                "Physical address of device not aligned to page boundaries.");
@@ -427,7 +427,7 @@ static int process_map_my_device_pages_optional_caps(process_handle_t *handle,
     libprocess_check_arg(new_device_name);
     libprocess_check_arg(handle);
 
-    libprocess_check_state(handle);
+    libprocess_check_state(handle, PROCESS_INIT);
 
     /**
      * Lookup device info in parent's init data
@@ -543,7 +543,7 @@ int process_add_device_irq(process_handle_t *handle,
     libprocess_check_arg(device_name);
     libprocess_check_arg(handle);
 
-    libprocess_check_state(handle);
+    libprocess_check_state(handle, PROCESS_INIT);
 
     seL4_CPtr irq_cap;
     cspacepath_t irq_path;
@@ -613,7 +613,7 @@ int process_add_my_device_irq(process_handle_t *handle,
     libprocess_check_arg(new_device_name);
     libprocess_check_arg(handle);
 
-    libprocess_check_state(handle);
+    libprocess_check_state(handle, PROCESS_INIT);
 
     init_irq_info_t info;
     libprocess_set_status(init_lookup_irq(device_name, &info));
@@ -646,7 +646,7 @@ int process_give_untyped_resources(process_handle_t *handle,
     libprocess_check_initialized();
 
     libprocess_check_arg(handle);
-    libprocess_check_state(handle);
+    libprocess_check_state(handle, PROCESS_INIT);
 
     ZF_LOGV("Warning:\n"
             "\tAdding untyped memory to child process!"

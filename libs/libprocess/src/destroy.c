@@ -21,9 +21,12 @@
 #include <init/init.h>
 #include <mmap/mmap.h>
 #include <process/process.h>
+#include <process/sync.h>
 
 
-
+/**
+ *  This convenience function assumes you hold the process lock
+ **/
 static void free_process_objects(process_object_t* list) {
     while(list != NULL) {
         vka_free_object(&init_objects.vka, &list->obj);
@@ -37,24 +40,14 @@ static void free_process_objects(process_object_t* list) {
 
 int process_destroy(process_handle_t *handle)
 {
-     int error, i;
+    libprocess_prologue();
+    int error, i;
 
-    /* TODO: Implement sync for init objects */
-    if(!init_check_initialized()) {
-        ZF_LOGW("Init objects (vka, vspace) have not been setup.\n"
-                "Run init_process or init_root_task to complete.");
-        return -1;
-    }
-
-    if(handle == NULL) {
-        ZF_LOGE("Null process handle passed");
-        return -2; /* TODO come up with error codes */
-    }
-
-    if(handle->state == PROCESS_DESTROYED) {
-        ZF_LOGE("Process has already been destroyed");
-        return -3;
-    }
+    libprocess_check_initialized();
+    libprocess_check_arg(handle);
+    
+    libprocess_guard(handle->state == PROCESS_DESTROYED, -6, libprocess_epilogue,
+                     "Process has already been destroyed");
     handle->state = PROCESS_DESTROYED;
 
     error = thread_destroy_free_handle_custom(&handle->main_thread, &handle->vspace);
@@ -136,7 +129,6 @@ int process_destroy(process_handle_t *handle)
     free_process_objects(handle->untyped_allocation_list);
     handle->untyped_allocation_list = NULL;
     
-
-    return 0;
-
+    libprocess_return_success();
+    libprocess_epilogue();
 }
