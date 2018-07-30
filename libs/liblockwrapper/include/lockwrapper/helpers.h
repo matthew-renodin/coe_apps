@@ -1,6 +1,16 @@
+/**
+ *  @file helpers.h
+ * 
+ *  @brief This file contains common macro functions used to surround
+ *  the liblockwrapper functions.
+ * 
+ *  Overall, the macros are a little ugly, but prevent hundreds of lines
+ *  of duplicated code to surround all vspace and vka functions with locks 
+ **/
+#pragma once
+
 #include <lockwrapper/types.h>
 
-/* This horrendous section of code prevents lots of duplication */
 #define ERROR_CHECK(lock, object, operation) assert(lock != NULL && object != NULL && object->operation != NULL)
 #define LOCKED(lock, operation, action) do { \
     lock->mutex_lock(lock->data); \
