@@ -1,11 +1,37 @@
+/**
+ *  @file lockvspace.h
+ * 
+ *  @brief Locking Mechanism for VSpace Object
+ **/
 #pragma once
 
 #include <lockwrapper/wrappers.h>
 
+/**
+ * @brief Initialize a vspace object from the current lockvspace
+ *
+ * @param       out_vspace              vspace to be initialized with locking functions and data
+ * @param       lockvspace              lockvspace object to use in the initialization
+ */
 void lockvspace_make_vspace(vspace_t *out_vspace, lockvspace_t *lockvspace);
 
+/**
+ * @brief Create a lockvspace object from an existing vspace
+ *
+ * @param       lockvspace              lockvspace to be initialized
+ * @param       parent_vspace           vspace object whose behavior and data are to be locked
+ * @param       lock                    lock to be used for locking the vspace
+ */
 void lockvspace_attach(lockvspace_t *lockvspace, vspace_t parent_vspace, lock_interface_t lock);
 
+/**
+ * @brief Modify an existing vspace by surrounding it with a lockvspace 
+ *        AND replacing its function pointers with locking versions
+ *
+ * @param       lockvspace              lockvspace to be initialized
+ * @param       parent_vspace           vspace object to be locked
+ * @param       lock                    lock to be used for locking the vspace
+ */
 static inline void lockvspace_replace(lockvspace_t *lockvspace, vspace_t *inout_vspace, lock_interface_t lock) {
     lockvspace_attach(lockvspace, *inout_vspace, lock);
     lockvspace_make_vspace(inout_vspace, lockvspace);
