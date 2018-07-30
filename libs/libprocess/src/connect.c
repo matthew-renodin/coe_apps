@@ -42,7 +42,6 @@ static int init_ep_obj(process_ep_conn_t *conn)
 static int init_notif_obj(process_ep_conn_t *conn)
 {
     libprocess_prologue();
-
     libprocess_check_arg(conn);
 
     libprocess_set_status(vka_alloc_notification(&init_objects.vka, &conn->vka_obj));
@@ -53,9 +52,47 @@ static int init_notif_obj(process_ep_conn_t *conn)
 }
 
 
+static int init_shmem_obj(process_shmem_conn_t *conn,
+                          const process_conn_obj_attr_t *attr)
+{
+    int i;
+    libprocess_prologue();
+    libprocess_check_arg(conn);
+    
+    if(attr == NULL) {
+        attr = &process_default_shmem_4k;
+    }
+
+    conn->num_pages = attr->num_pages;
+    conn->page_bits = attr->page_bits;
+
+    conn->vka_obj_list = malloc(sizeof(vka_object_t)*conn->num_pages);
+    libprocess_check_malloc(conn->vka_obj_list, libprocess_epilogue);
+
+    for(i = 0; i < conn->num_pages; i++) {
+        libprocess_set_status(vka_alloc_frame(&init_objects.vka,
+                                              conn->page_bits,
+                                              &conn->vka_obj_list[i]));
+
+        libprocess_guard(libprocess_get_status(), -1, failed_alloc_frame,
+                         "Failed to allocate a page of memory from vka");
+    }
+
+    libprocess_return_success();
+
+failed_alloc_frame:
+    for(i = i-1; i >= 0; i--) {
+        vka_free_object(&init_objects.vka, &conn->vka_obj_list[i]);
+    }
+    free(conn->vka_obj_list);
+
+    libprocess_epilogue();
+}
+
+
 static int init_conn_obj(process_conn_type_t typ,
                          const char *name,
-                         process_conn_obj_attr_t *attr,
+                         const process_conn_obj_attr_t *attr,
                          process_conn_obj_t *obj)
 {
     libprocess_prologue();
@@ -66,17 +103,18 @@ static int init_conn_obj(process_conn_type_t typ,
 
     switch(typ) {
         case PROCESS_ENDPOINT:
-            init_ep_obj(&obj->obj.ep);
+            libprocess_set_status(init_ep_obj(&obj->obj.ep));
             break;
         case PROCESS_NOTIFICATION:
-            init_notif_obj(&obj->obj.notif);
+            libprocess_set_status(init_notif_obj(&obj->obj.notif));
             break;
         case PROCESS_SHARED_MEMORY:
-            ZF_LOGF("UNIMPLEMENTED");
+            libprocess_set_status(init_shmem_obj(&obj->obj.shmem, attr));
             break;
         default:
             libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
     }
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, "Failed to init object");
 
     libprocess_return_success();
     libprocess_epilogue();
@@ -85,7 +123,7 @@ static int init_conn_obj(process_conn_type_t typ,
 
 int process_create_conn_obj(process_conn_type_t typ,
                             const char *name,
-                            process_conn_obj_attr_t *attr,
+                            const process_conn_obj_attr_t *attr,
                             process_conn_obj_t **obj)
 {
     libprocess_prologue();
@@ -116,6 +154,7 @@ failed_init:
 static int cleanup_ep_obj(process_ep_conn_t *conn)
 {
     libprocess_prologue();
+    libprocess_check_arg(conn);
 
     vka_free_object(&init_objects.vka, &conn->vka_obj);
 
@@ -123,8 +162,23 @@ static int cleanup_ep_obj(process_ep_conn_t *conn)
     libprocess_epilogue();
 }
 
+static int cleanup_shmem_obj(process_shmem_conn_t *conn)
+{
+    libprocess_prologue();
+    libprocess_check_arg(conn);
 
-process_free_conn_obj(process_conn_obj_t **obj)
+    for(int i = 0; i < conn->num_pages; i++) {
+        vka_free_object(&init_objects.vka, &conn->vka_obj_list[i]);
+    }
+
+    free(conn->vka_obj_list);
+
+    libprocess_return_success();
+    libprocess_epilogue();
+}
+
+
+int process_free_conn_obj(process_conn_obj_t **obj)
 {
     libprocess_prologue();
     libprocess_check_arg(obj);
@@ -140,7 +194,7 @@ process_free_conn_obj(process_conn_obj_t **obj)
             libprocess_set_status(cleanup_ep_obj(&(*obj)->obj.notif));
             break;
         case PROCESS_SHARED_MEMORY:
-            ZF_LOGF("UNIMPLEMENTED");
+            libprocess_set_status(cleanup_shmem_obj(&(*obj)->obj.shmem));
             break;
         default:
                libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
@@ -154,7 +208,6 @@ process_free_conn_obj(process_conn_obj_t **obj)
     libprocess_return_success();
     libprocess_epilogue();
 }
-
 
 
 
@@ -217,10 +270,143 @@ static int copy_notification_to_proc(process_handle_t *handle,
 
 
 
+static int copy_shmem_generic(process_shmem_conn_t *conn,
+                              process_conn_perms_t perms,
+                              vspace_t *vspace,
+                              seL4_CPtr page_dir,
+                              void **vaddr)
+{   
+    int i;
+    AUTOFREE seL4_CPtr *caps = NULL;
+
+    libprocess_prologue();
+
+    libprocess_check_arg(conn);
+
+    caps = malloc(sizeof(seL4_CPtr)*conn->num_pages);
+    libprocess_check_malloc(caps, libprocess_epilogue);
+
+    for(i = 0; i < conn->num_pages; i++) {
+        cspacepath_t path1, path2;
+        vka_cspace_make_path(&init_objects.vka, conn->vka_obj_list[i].cptr, &path1);
+        vka_cspace_alloc_path(&init_objects.vka, &path2);
+        libprocess_set_status(vka_cnode_copy(&path2, &path1, seL4_AllRights));
+        libprocess_guard(libprocess_get_status(), -1, failed_copy_cap,
+                         "Failed to copy cap for shared page.");
+        caps[i] = path2.capPtr;
+    }
+
+    mmap_entry_attr_t map_attrs;
+    map_attrs.readable = perms.r;
+    map_attrs.writable = perms.w;
+    map_attrs.executable = perms.x;
+    map_attrs.page_size_bits = conn->page_bits;
+
+    reservation_t res; 
+    libprocess_set_status(mmap_existing_pages_custom(vspace,
+                                                     page_dir,
+                                                     conn->num_pages,
+                                                     &map_attrs,
+                                                     caps,
+                                                     vaddr,
+                                                     &res));
+    libprocess_guard(libprocess_get_status(), -1, failed_mmap,
+                     "Failed to share pages to child process");
+
+    libprocess_return_success();
+
+failed_mmap:
+failed_copy_cap:
+    for(i = i-1; i >= 0; i--) {
+        cspacepath_t cap_path;
+        vka_cspace_make_path(&init_objects.vka, caps[i], &cap_path);
+        vka_cnode_delete(&cap_path);
+        vka_cspace_free(&init_objects.vka, caps[i]);
+    }
+
+    libprocess_epilogue();
+}
+
+
+static int copy_shmem_to_proc(process_handle_t *handle,
+                              process_conn_obj_t *obj,
+                              process_conn_perms_t perms)
+{
+    libprocess_prologue();
+
+    libprocess_check_arg(handle);
+    libprocess_check_arg(obj);
+    libprocess_guard(obj->typ != PROCESS_SHARED_MEMORY, -1, libprocess_epilogue,
+                     "Trying to map a non shmem object.");
+
+
+    process_shmem_conn_t *conn = &obj->obj.shmem;
+
+    SharedMemoryData *shmem_data = malloc(sizeof(SharedMemoryData));
+    libprocess_check_malloc(shmem_data, libprocess_epilogue);
+
+    void *vaddr;
+    libprocess_set_status(copy_shmem_generic(conn,
+                                             perms,
+                                             &handle->vspace,
+                                             handle->page_dir.cptr,
+                                             &vaddr));
+    libprocess_guard(libprocess_get_status(), -1, failed,
+                     "Failed to copy shmem");
+
+    shared_memory_data__init(shmem_data);
+    shmem_data->name = (char *)obj->name; /* protobuf uses non const strings */
+    shmem_data->addr = (seL4_Word)vaddr;
+    shmem_data->length_bytes = conn->num_pages * BIT(conn->page_bits);
+
+    LINKED_LIST_PREPEND(shmem_data, handle->init_data.shmem_list_head);
+    libprocess_return_success();
+
+failed:
+    free(shmem_data);
+
+    libprocess_epilogue();
+}
+
+
+static int connect_ep_self(process_ep_conn_t *conn,
+                           seL4_CPtr *ret)
+{
+    libprocess_prologue();
+    libprocess_check_arg(conn);
+    libprocess_check_arg(ret);
+
+    *ret = conn->vka_obj.cptr;
+
+    libprocess_return_success();
+    libprocess_epilogue();
+}
+
+
+static int connect_shmem_self(process_shmem_conn_t *conn,
+                              process_conn_perms_t perms,
+                              void **ret)
+{
+    libprocess_prologue();
+    libprocess_check_arg(conn);
+    libprocess_check_arg(ret);
+
+    libprocess_set_status(copy_shmem_generic(conn,
+                                             perms,
+                                             &init_objects.vspace,
+                                             init_objects.page_dir_cap,
+                                             ret));
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, "Failed to copy shmem");
+
+    libprocess_return_success();
+    libprocess_epilogue();
+
+}
 
 int process_connect(process_handle_t *handle,
                     process_conn_obj_t *obj,
-                    process_conn_perms_t perms)
+                    process_conn_perms_t perms,
+                    process_conn_ret_t *ret)
 {
     libprocess_prologue();
 
@@ -229,23 +415,48 @@ int process_connect(process_handle_t *handle,
 
     seL4_CapRights_t rights = seL4_CapRights_new(perms.g, perms.r, perms.w);
 
-    if(handle == PROCESS_SELF) { 
-        ZF_LOGF("UNIMPLEMENTED");
-    } else {
-        switch(obj->typ) {
-            case PROCESS_ENDPOINT:
-                copy_ep_to_proc(handle, obj->obj.ep.vka_obj.cptr, rights, obj->name);
-                break;
-            case PROCESS_NOTIFICATION:
-                copy_notification_to_proc(handle, obj->obj.notif.vka_obj.cptr, rights, obj->name);
-                break;
-            case PROCESS_SHARED_MEMORY:
-                ZF_LOGF("UNIMPLEMENTED");
-                break;
-            default:
-                libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
-        }
+    switch(obj->typ) {
+        case PROCESS_ENDPOINT:
+            if(handle == PROCESS_SELF) {
+                libprocess_set_status(connect_ep_self(&obj->obj.ep, &ret->self_cap));
+            } else {
+                libprocess_set_status(copy_ep_to_proc(handle,
+                                                      obj->obj.ep.vka_obj.cptr,
+                                                      rights,
+                                                      obj->name));
+            }
+            break;
+        case PROCESS_NOTIFICATION:
+            if(handle == PROCESS_SELF) {
+                libprocess_set_status(connect_ep_self(&obj->obj.ep, &ret->self_cap));
+            } else {
+                libprocess_set_status(copy_notification_to_proc(handle,
+                                                                obj->obj.notif.vka_obj.cptr,
+                                                                rights,
+                                                                obj->name));
+            }
+            break;
+        case PROCESS_SHARED_MEMORY:
+            if(handle == PROCESS_SELF) {
+                libprocess_set_status(connect_shmem_self(&obj->obj.shmem,
+                                                         perms,
+                                                         &ret->self_shmem_addr));
+            } else {
+                libprocess_set_status(copy_shmem_to_proc(handle,
+                                                         obj,
+                                                         perms));
+            }
+            break;
+        default:
+            libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
+    }
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue,
+                     "Failed to connect");
 
+    if(handle == PROCESS_SELF) { 
+
+
+    } else {
         process_shared_objects_ref_t *ref = malloc(sizeof(process_shared_objects_ref_t));
         libprocess_check_malloc(ref, libprocess_epilogue);
         ref->ref2 = obj;

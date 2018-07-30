@@ -62,6 +62,7 @@ typedef struct {
 
 typedef struct process_conn_obj_attr {
     seL4_Word num_pages;
+    seL4_Word page_bits;
 } process_conn_obj_attr_t;
 
 
@@ -70,7 +71,8 @@ typedef struct process_ep_conn {
 } process_ep_conn_t;
 
 typedef struct process_shmem_conn {
-    seL4_CPtr *caps;
+    vka_object_t *vka_obj_list;
+    seL4_Word page_bits;
     seL4_Word num_pages;
 } process_shmem_conn_t;
 
@@ -85,6 +87,11 @@ typedef struct process_conn_obj {
         process_shmem_conn_t shmem;
     } obj;
 } process_conn_obj_t;
+
+typedef union process_conn_ret {
+    void *self_shmem_addr;
+    seL4_CPtr self_cap;
+} process_conn_ret_t;
 
 
 

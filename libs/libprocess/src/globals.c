@@ -17,3 +17,13 @@ const process_attr_t process_default_attrs = {
     .create_fault_ep    = 0,
     .existing_fault_ep  = seL4_CapNull,
 };
+
+const process_conn_perms_t process_rw = {.r=1, .w=1, .x=0, .g=0};
+const process_conn_perms_t process_rx = {.r=1, .w=0, .x=1, .g=0};
+const process_conn_perms_t process_rwg = {.r=1, .w=1, .x=0, .g=1};
+const process_conn_perms_t process_ro = {.r=1, .w=0, .x=0, .g=0};
+
+const process_conn_obj_attr_t process_default_shmem_4k = {
+    .num_pages = 1,
+    .page_bits = PAGE_BITS_4K,
+};

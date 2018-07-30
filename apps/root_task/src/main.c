@@ -121,7 +121,6 @@ UNUSED static void test_libprocess(void) {
     UNUSED int error, i;
     UNUSED process_handle_t test_procs[NUM_TEST_PROCS];
     UNUSED process_handle_t *test_procs_refs[NUM_TEST_PROCS];
-    UNUSED process_handle_t *test_procs_bad_refs[NUM_TEST_PROCS + 1];
     UNUSED seL4_CapRights_t test_procs_perms[NUM_TEST_PROCS];
     
     ZF_LOGD("Starting libprocess test.");
@@ -150,25 +149,67 @@ UNUSED static void test_libprocess(void) {
                                &test_procs[i]);
         assert(error == 0);
         test_procs_refs[i] = &test_procs[i];
-        test_procs_bad_refs[i] = &test_procs[i];
         test_procs_perms[i] = seL4_CanRead;
     }
 
-    test_procs_bad_refs[NUM_TEST_PROCS] = NULL;
 
     UNUSED process_conn_obj_t *ep;
-    process_create_conn_obj(PROCESS_ENDPOINT, "testep", NULL, &ep);
+    UNUSED process_conn_obj_t *notif;
+    UNUSED process_conn_obj_t *shmem;
+
+    error = process_create_conn_obj(PROCESS_ENDPOINT, "testep", NULL, &ep);
+    ZF_LOGF_IF(error, "Failed to create ep");
+
+    error = process_create_conn_obj(PROCESS_NOTIFICATION, "testnotif", NULL, &notif);
+    ZF_LOGF_IF(error, "Failed to create notif");
+
+    error = process_create_conn_obj(PROCESS_SHARED_MEMORY, "testshmem", NULL, &shmem);
+    ZF_LOGF_IF(error, "Failed to create shmem");
 
     for(i = 0; i < NUM_TEST_PROCS; i++) {
-        error = process_connect(&test_procs[i], ep, (process_conn_perms_t){.r=1, .w=1, .g=1});
-        assert(error == 0);
+        error = process_connect(&test_procs[i],
+                                ep,
+                                process_rwg,
+                                NULL);
+        ZF_LOGF_IF(error, "Failed to connect ep");
+
+        error = process_connect(&test_procs[i],
+                                notif,
+                                process_rw,
+                                NULL);
+        ZF_LOGF_IF(error, "Failed to connect notif");
+
+        error = process_connect(&test_procs[i],
+                                shmem,
+                                process_rw,
+                                NULL);
+        ZF_LOGF_IF(error, "Failed to connect shmem");
 
         error = process_run(&test_procs[i], 1, (char**)&test_procs[i].name);
         assert(error == 0);
     }
+    
+    UNUSED int *shmem_addr;
+    UNUSED seL4_CPtr notif_cap;
+
+    process_conn_ret_t ret;
+    error = process_connect(PROCESS_SELF, notif, process_rw, &ret);
+    ZF_LOGF_IF(error, "Failed to connect shmem to self");
+    notif_cap = ret.self_cap;
+
+    error = process_connect(PROCESS_SELF, shmem, process_rw, &ret);
+    ZF_LOGF_IF(error, "Failed to connect shmem to self");
+    shmem_addr = (int*)ret.self_shmem_addr;
 
 
+    while(1) {
+        seL4_Wait(notif_cap, NULL);
+        if(*shmem_addr == 410) break;
+        seL4_Signal(notif_cap);
+        seL4_Yield();
+    }
 
+    
     
 
     ZF_LOGD("Finished libprocess test.");

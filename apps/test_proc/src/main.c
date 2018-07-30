@@ -52,21 +52,45 @@ int main(int argc, char **argv) {
     ZF_LOGF_IF(error, "Failed to init child process");
 
     seL4_CPtr testep = init_lookup_endpoint("testep");
+    ZF_LOGF_IF(testep == seL4_CapNull, "Failed to lookup testep");
 
-    if(strcmp(argv[0], "test_proc1") == 0) {
+    seL4_Word my_num = (seL4_Word)argv[0][9] - (seL4_Word)'0';
+    const seL4_Word offset = 100;
+
+    if(strcmp(argv[0], "test_proc0") == 0) {
         while(1) {
             seL4_Word badge;
             seL4_MessageInfo_t msg = seL4_Recv(testep, &badge);
             seL4_Word num = seL4_MessageInfo_get_label(msg);
             ZF_LOGI("Recieved: %lu", num);
-            seL4_Reply(seL4_MessageInfo_new(num+100,0,0,0));
+            seL4_Reply(seL4_MessageInfo_new(num + offset,0,0,0));
         }
     } else {
-        seL4_MessageInfo_t msg = seL4_Call(testep, seL4_MessageInfo_new((seL4_Word)argv[0][9],0,0,0));
-        
-        ZF_LOGI("Got Reply: %lu", seL4_MessageInfo_get_label(msg));
-    }
+        seL4_MessageInfo_t msg = seL4_Call(testep, seL4_MessageInfo_new(my_num,0,0,0));
 
+        seL4_Word reply = seL4_MessageInfo_get_label(msg);
+        
+        ZF_LOGI("Got Reply: %lu", reply);
+        ZF_LOGF_IF(reply != my_num + offset, "Invalid reply recieved");
+
+        int *shmem = (int *)init_lookup_shmem("testshmem");
+        ZF_LOGF_IF(shmem == NULL, "Failed to lookup testshmem");
+
+        seL4_CPtr notif = init_lookup_notification("testnotif");
+        ZF_LOGF_IF(notif == seL4_CapNull, "Failed to lookup testnotif");
+
+        ZF_LOGD("Shmem addr %p", shmem);
+        if(strcmp(argv[0], "test_proc1") == 0) {
+            *shmem = reply;
+            ZF_LOGI("Writing shmem %i", *shmem);
+            seL4_Signal(notif);
+        } else {
+            seL4_Wait(notif, NULL);
+            *shmem += reply;
+            ZF_LOGI("Writing shmem %i", *shmem);
+            seL4_Signal(notif);
+        }
+    }
 
     return 0;
 }

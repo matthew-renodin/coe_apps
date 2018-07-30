@@ -459,12 +459,13 @@ int process_give_untyped_resources(process_handle_t *handle,
 
 int process_create_conn_obj(process_conn_type_t typ,
                             const char *name,
-                            process_conn_obj_attr_t *attr,
+                            const process_conn_obj_attr_t *attr,
                             process_conn_obj_t **obj);
 
 int process_free_conn_obj(process_conn_obj_t **obj);
 
 int process_connect(process_handle_t *handle,
                     process_conn_obj_t *obj,
-                    process_conn_perms_t perms);
+                    process_conn_perms_t perms,
+                    process_conn_ret_t *ret);
 
