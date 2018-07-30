@@ -120,7 +120,6 @@ UNUSED static void test_libthread(void) {
 UNUSED static void test_libprocess(void) {
     UNUSED int error, i;
     UNUSED process_handle_t test_procs[NUM_TEST_PROCS];
-    UNUSED process_handle_t *test_procs_refs[NUM_TEST_PROCS];
     UNUSED seL4_CapRights_t test_procs_perms[NUM_TEST_PROCS];
     
     ZF_LOGD("Starting libprocess test.");
@@ -148,7 +147,6 @@ UNUSED static void test_libprocess(void) {
                                &process_default_attrs,
                                &test_procs[i]);
         assert(error == 0);
-        test_procs_refs[i] = &test_procs[i];
         test_procs_perms[i] = seL4_CanRead;
     }
 
@@ -210,7 +208,20 @@ UNUSED static void test_libprocess(void) {
     }
 
     
+    for(i = 0; i < NUM_TEST_PROCS; i++) {
+        error = process_destroy(&test_procs[i]);
+        ZF_LOGF_IF(error, "Failed to destroy process");
+    }
     
+    error = process_free_conn_obj(&ep);
+    ZF_LOGF_IF(error, "Failed to free ep");
+
+    error = process_free_conn_obj(&notif);
+    ZF_LOGF_IF(error, "Failed to free notif");
+
+    error = process_free_conn_obj(&shmem);
+    ZF_LOGF_IF(error, "Failed to free shmem");
+
 
     ZF_LOGD("Finished libprocess test.");
 }

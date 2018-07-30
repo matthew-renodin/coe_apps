@@ -108,6 +108,16 @@ int process_destroy(process_handle_t *handle)
             ZF_LOGE("Invalid shared object reference");
             break;
         }
+
+        process_conn_obj_t *conn_obj = handle->shared_objects->ref2;
+        if(conn_obj == NULL) {
+            ZF_LOGE("Invalid conn obj");
+            break;
+        }
+        conn_obj->ref_count--;
+        
+
+        /** old code below: TODO delete with process_shared_objects stuff and old config. RTH */
         
         if(--shobj->ref_count == 0) {
             for(i = 0; i < shobj->num_objs; i++) {

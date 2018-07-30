@@ -74,6 +74,10 @@ typedef struct process_shmem_conn {
     vka_object_t *vka_obj_list;
     seL4_Word page_bits;
     seL4_Word num_pages;
+
+    bool self_mapped;
+    reservation_t self_res;
+    void *self_addr;
 } process_shmem_conn_t;
 
 typedef struct process_conn_obj {

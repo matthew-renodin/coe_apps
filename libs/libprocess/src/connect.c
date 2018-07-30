@@ -65,6 +65,7 @@ static int init_shmem_obj(process_shmem_conn_t *conn,
 
     conn->num_pages = attr->num_pages;
     conn->page_bits = attr->page_bits;
+    conn->self_mapped = false;
 
     conn->vka_obj_list = malloc(sizeof(vka_object_t)*conn->num_pages);
     libprocess_check_malloc(conn->vka_obj_list, libprocess_epilogue);
@@ -166,6 +167,15 @@ static int cleanup_shmem_obj(process_shmem_conn_t *conn)
 {
     libprocess_prologue();
     libprocess_check_arg(conn);
+
+    if(conn->self_mapped) {
+        vspace_unmap_pages(&init_objects.vspace,
+                           conn->self_addr,
+                           conn->num_pages,
+                           conn->page_bits,
+                           &init_objects.vka);
+        vspace_free_reservation(&init_objects.vspace, conn->self_res);
+    }
 
     for(int i = 0; i < conn->num_pages; i++) {
         vka_free_object(&init_objects.vka, &conn->vka_obj_list[i]);
@@ -274,6 +284,7 @@ static int copy_shmem_generic(process_shmem_conn_t *conn,
                               process_conn_perms_t perms,
                               vspace_t *vspace,
                               seL4_CPtr page_dir,
+                              reservation_t *res,
                               void **vaddr)
 {   
     int i;
@@ -282,6 +293,7 @@ static int copy_shmem_generic(process_shmem_conn_t *conn,
     libprocess_prologue();
 
     libprocess_check_arg(conn);
+    libprocess_check_arg(res);
 
     caps = malloc(sizeof(seL4_CPtr)*conn->num_pages);
     libprocess_check_malloc(caps, libprocess_epilogue);
@@ -302,14 +314,13 @@ static int copy_shmem_generic(process_shmem_conn_t *conn,
     map_attrs.executable = perms.x;
     map_attrs.page_size_bits = conn->page_bits;
 
-    reservation_t res; 
     libprocess_set_status(mmap_existing_pages_custom(vspace,
                                                      page_dir,
                                                      conn->num_pages,
                                                      &map_attrs,
                                                      caps,
                                                      vaddr,
-                                                     &res));
+                                                     res));
     libprocess_guard(libprocess_get_status(), -1, failed_mmap,
                      "Failed to share pages to child process");
 
@@ -346,10 +357,12 @@ static int copy_shmem_to_proc(process_handle_t *handle,
     libprocess_check_malloc(shmem_data, libprocess_epilogue);
 
     void *vaddr;
+    reservation_t res;
     libprocess_set_status(copy_shmem_generic(conn,
                                              perms,
                                              &handle->vspace,
                                              handle->page_dir.cptr,
+                                             &res,
                                              &vaddr));
     libprocess_guard(libprocess_get_status(), -1, failed,
                      "Failed to copy shmem");
@@ -391,12 +404,19 @@ static int connect_shmem_self(process_shmem_conn_t *conn,
     libprocess_check_arg(conn);
     libprocess_check_arg(ret);
 
+    libprocess_guard(conn->self_mapped, -1, libprocess_epilogue,
+                     "You cannot map this memory to self more than once");
+
     libprocess_set_status(copy_shmem_generic(conn,
                                              perms,
                                              &init_objects.vspace,
                                              init_objects.page_dir_cap,
+                                             &conn->self_res,
                                              ret));
     libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, "Failed to copy shmem");
+
+    conn->self_mapped = true;
+    conn->self_addr = *ret;
 
     libprocess_return_success();
     libprocess_epilogue();
@@ -453,17 +473,14 @@ int process_connect(process_handle_t *handle,
     libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue,
                      "Failed to connect");
 
-    if(handle == PROCESS_SELF) { 
-
-
-    } else {
+    if(handle != PROCESS_SELF) { 
         process_shared_objects_ref_t *ref = malloc(sizeof(process_shared_objects_ref_t));
         libprocess_check_malloc(ref, libprocess_epilogue);
         ref->ref2 = obj;
         LINKED_LIST_PREPEND(ref, handle->shared_objects);
+        obj->ref_count++;
     }
 
-    obj->ref_count++;
 
     libprocess_return_success();
 
