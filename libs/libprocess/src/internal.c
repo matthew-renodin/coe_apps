@@ -37,6 +37,31 @@ void libprocess_next_free_path(cspacepath_t *dst, process_handle_t *handle) {
 /**
  * Assumes you have error checked args
  */
+seL4_CPtr libprocess_mint_cap_next_slot(process_handle_t *handle,
+                                        seL4_CPtr new_cap,
+                                        seL4_CapRights_t perms,
+                                        seL4_Word badge)
+{
+    libprocess_prologue();
+    seL4_Word slot = seL4_CapNull;
+
+    cspacepath_t dst, src;
+    libprocess_next_free_path(&dst, handle);
+
+    vka_cspace_make_path(&init_objects.vka, new_cap, &src);
+    libprocess_set_status(vka_cnode_mint(&dst, &src, perms, badge));
+    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, 
+                     "Failed to copy cap into child cnode.");
+    slot = handle->cnode_next_free++;
+    
+    libprocess_custom_epilogue()
+    libprocess_return_value(libprocess_get_status() == 0 ? slot : seL4_CapNull);
+}
+
+
+/**
+ * Assumes you have error checked args
+ */
 seL4_CPtr libprocess_copy_cap_next_slot(process_handle_t *handle,
                                                seL4_CPtr new_cap,
                                                seL4_CapRights_t perms)
@@ -56,6 +81,7 @@ seL4_CPtr libprocess_copy_cap_next_slot(process_handle_t *handle,
     libprocess_custom_epilogue()
     libprocess_return_value(libprocess_get_status() == 0 ? slot : seL4_CapNull);
 }
+
 
 /**
  * Assumes you have error checked args

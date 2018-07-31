@@ -63,7 +63,6 @@ int process_destroy(process_handle_t *handle)
 
     /**
      * Free the heap, code, data
-     * TODO: figure out how this affects shared memory among many 
      */
     vspace_tear_down(&handle->vspace, VSPACE_FREE);
     
@@ -91,42 +90,18 @@ int process_destroy(process_handle_t *handle)
      * TODO figure out when to free the fault endpoint
      */
 
-
     /**
-     * TODO: We leave endpoints and notifications alone for now.
-     * This is ultimately a memory leak, but it's pretty small overall.
-     */
-
-
-    /**
-     * Free the shared objects, if no one else is using them
+     * Update the conn object reference counts
      */
     while(handle->shared_objects != NULL) {
-        process_shared_objects_t *shobj = handle->shared_objects->ref;
 
-        if(shobj == NULL) {
-            ZF_LOGE("Invalid shared object reference");
-            break;
-        }
-
-        process_conn_obj_t *conn_obj = handle->shared_objects->ref2;
-        if(conn_obj == NULL) {
+        process_conn_obj_t *conn_obj = handle->shared_objects->ref;
+        if(conn_obj != NULL) {
+            conn_obj->ref_count--;
+        } else { 
             ZF_LOGE("Invalid conn obj");
-            break;
         }
-        conn_obj->ref_count--;
         
-
-        /** old code below: TODO delete with process_shared_objects stuff and old config. RTH */
-        
-        if(--shobj->ref_count == 0) {
-            for(i = 0; i < shobj->num_objs; i++) {
-                vka_free_object(&init_objects.vka, &shobj->obj_list[i]);
-            }
-            free(shobj->obj_list);
-            free(shobj);
-        }
-
         process_shared_objects_ref_t *tmp = handle->shared_objects;
         handle->shared_objects = handle->shared_objects->next;
         free(tmp);

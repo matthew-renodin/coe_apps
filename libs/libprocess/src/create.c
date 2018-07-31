@@ -145,13 +145,14 @@ int process_create(const char *elf_file_name,
     /**
      * Allocate a heap and map it into the process's page directory.
      */
+    reservation_t heap_res;
     error = mmap_new_pages_custom(&handle->vspace,
                                   handle->page_dir.cptr,
                                   handle->attrs.heap_size_pages,
                                   &mmap_attr_4k_data,
                                   NULL,
                                   &handle->heap_vaddr,
-                                  &handle->heap_res);
+                                  &heap_res);
     libprocess_guard(error, -10, map_heap_fail, "Failed to map in the heap.");
 
     handle->cnode_root_data = api_make_guard_skip_word(seL4_WordBits - handle->attrs.cnode_size_bits);

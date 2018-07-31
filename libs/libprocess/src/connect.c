@@ -230,6 +230,7 @@ int process_free_conn_obj(process_conn_obj_t **obj)
 static inline int copy_cptr_to_proc(process_handle_t *handle,
                                     seL4_CPtr ep_cap,
                                     seL4_CapRights_t perms,
+                                    process_conn_attr_t *attr,
                                     const char *conn_name,
                                     EndpointData **current_list_head) 
 {
@@ -241,7 +242,12 @@ static inline int copy_cptr_to_proc(process_handle_t *handle,
 
     endpoint_data__init(ep_data);
     ep_data->name = (char *)conn_name; /* protobuf uses non const strings */
-    ep_data->cap = libprocess_copy_cap_next_slot(handle, ep_cap, perms);
+
+    if(attr == NULL) {
+        ep_data->cap = libprocess_copy_cap_next_slot(handle, ep_cap, perms);
+    } else {
+        ep_data->cap = libprocess_mint_cap_next_slot(handle, ep_cap, perms, attr->badge);
+    }
     libprocess_guard(ep_data->cap == seL4_CapNull, -2, free_endpoint,
                      "Failed to copy ep cap");
 
@@ -259,9 +265,10 @@ static inline int copy_cptr_to_proc(process_handle_t *handle,
 static int copy_ep_to_proc(process_handle_t *handle,
                            seL4_CPtr ep_cap,
                            seL4_CapRights_t perms,
+                           process_conn_attr_t *attr,
                            const char *conn_name) 
 {
-    return copy_cptr_to_proc(handle, ep_cap, perms, conn_name,
+    return copy_cptr_to_proc(handle, ep_cap, perms, attr, conn_name,
                              &handle->init_data.ep_list_head);
 }
 
@@ -272,9 +279,10 @@ static int copy_ep_to_proc(process_handle_t *handle,
 static int copy_notification_to_proc(process_handle_t *handle,
                                      seL4_CPtr ep_cap,
                                      seL4_CapRights_t perms,
+                                     process_conn_attr_t *attr,
                                      const char *conn_name) 
 {
-    return copy_cptr_to_proc(handle, ep_cap, perms, conn_name,
+    return copy_cptr_to_proc(handle, ep_cap, perms, attr, conn_name,
                              &handle->init_data.notification_list_head);
 }
 
@@ -426,6 +434,7 @@ static int connect_shmem_self(process_shmem_conn_t *conn,
 int process_connect(process_handle_t *handle,
                     process_conn_obj_t *obj,
                     process_conn_perms_t perms,
+                    process_conn_attr_t *attr,
                     process_conn_ret_t *ret)
 {
     libprocess_prologue();
@@ -443,6 +452,7 @@ int process_connect(process_handle_t *handle,
                 libprocess_set_status(copy_ep_to_proc(handle,
                                                       obj->obj.ep.vka_obj.cptr,
                                                       rights,
+                                                      attr,
                                                       obj->name));
             }
             break;
@@ -453,6 +463,7 @@ int process_connect(process_handle_t *handle,
                 libprocess_set_status(copy_notification_to_proc(handle,
                                                                 obj->obj.notif.vka_obj.cptr,
                                                                 rights,
+                                                                attr,
                                                                 obj->name));
             }
             break;
@@ -476,7 +487,7 @@ int process_connect(process_handle_t *handle,
     if(handle != PROCESS_SELF) { 
         process_shared_objects_ref_t *ref = malloc(sizeof(process_shared_objects_ref_t));
         libprocess_check_malloc(ref, libprocess_epilogue);
-        ref->ref2 = obj;
+        ref->ref = obj;
         LINKED_LIST_PREPEND(ref, handle->shared_objects);
         obj->ref_count++;
     }
