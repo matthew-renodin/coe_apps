@@ -64,9 +64,9 @@ static int copy_irq_to_proc(process_handle_t *handle,
     irq_data__init(irq_data);
     irq_data->name = (char *)conn_name; /* protobuf uses non const strings */
     irq_data->irq_cap = libprocess_copy_cap_next_slot(handle, irq_cap, seL4_AllRights);
-    libprocess_guard(irq_data->irq_cap != seL4_CapNull, -2, free_data, "Failed to copy IRQ cap");
+    libprocess_guard(irq_data->irq_cap == seL4_CapNull, -2, free_data, "Failed to copy IRQ cap");
     irq_data->ep_cap = libprocess_copy_cap_next_slot(handle, ep_cap, seL4_AllRights);
-    libprocess_guard(irq_data->ep_cap != seL4_CapNull, -2, uncopy_irq_cap, "Failed to copy EP cap");
+    libprocess_guard(irq_data->ep_cap == seL4_CapNull, -2, uncopy_irq_cap, "Failed to copy EP cap");
     irq_data->number = irq_number;
 
     LINKED_LIST_PREPEND(irq_data, handle->init_data.irq_list_head);
@@ -111,7 +111,7 @@ static int copy_devmem_to_proc(process_handle_t *handle,
 
         for(current_cap = 0; current_cap < num_pages; current_cap++) {
             new_caps[current_cap] = libprocess_copy_cap_next_slot(handle, caps[current_cap], seL4_AllRights); 
-            libprocess_guard(new_caps[current_cap] != seL4_CapNull, -2, uncopy_caps, "Failed to copy cap");
+            libprocess_guard(new_caps[current_cap] == seL4_CapNull, -2, uncopy_caps, "Failed to copy cap");
         }
 
         /**
