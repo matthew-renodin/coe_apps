@@ -38,8 +38,8 @@
 /* Include seL4 COE library headers */
 #include <init/init.h>
 #include <thread/thread.h>
+#include <process/process.h>
 
-char _cpio_archive[1]; /* TODO remove */
 
 UNUSED char *my_name;
 UNUSED char *ep_name;
@@ -85,11 +85,6 @@ void * worker_thread(void *cookie) {
     return (void*)42;
 }
 
-
-void *thread_abuser(void *cookie) {
-    return NULL;
-}
-
 /**
  * Demo entry point
  */
@@ -101,6 +96,20 @@ int main(int argc, char **argv) {
 
     my_name = argv[0];
     ep_name = argv[1];
+
+
+
+    process_handle_t child;
+    error = process_create("dummy",
+                           "grandchild_example",
+                           &process_default_attrs,
+                           &child);
+    ZF_LOGF_IF(error, "Failed to create grandchild");
+
+    char *child_argv[] = { "gather round children" };
+    error = process_run(&child, sizeof(child_argv)/sizeof(child_argv[0]), child_argv);
+
+
 
     thread_handle_t *worker = thread_handle_create(&thread_1mb_high_priority);
     ZF_LOGF_IF(worker == NULL, "Failed to create thread.");
@@ -114,19 +123,6 @@ int main(int argc, char **argv) {
     thread_destroy_free_handle(&worker);
 
 
-//    while(1) {
-//        thread_handle_t *tabuser = thread_handle_create(&thread_1mb_high_priority);
-//        ZF_LOGF_IF(tabuser == NULL, "Failed to create thread.");
-//
-//        ZF_LOGI("Thread started with stack top: %p", tabuser->stack_vaddr);
-//        error = thread_start(tabuser, thread_abuser, (void*)NULL);
-//        ZF_LOGF_IF(error, "Failed to start thread");
-//
-//        thread_join(tabuser);
-//        error = thread_destroy_free_handle(&tabuser);
-//        ZF_LOGF_IF(error, "Failed to destroy thread");
-//
-//    }
     
     return 0;
 }

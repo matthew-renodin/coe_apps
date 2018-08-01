@@ -14,7 +14,8 @@ const process_attr_t process_default_attrs = {
     .priority           = CONFIG_LIB_PROCESS_DEFAULT_PRIORITY,
     .cpu_affinity       = CONFIG_LIB_PROCESS_DEFAULT_CPU_AFFINITY,
     .cnode_size_bits    = CONFIG_LIB_PROCESS_DEFAULT_CNODE_SIZE_BITS,
-    .create_fault_ep    = 0,
+    .give_asid_pool     = CONFIG_LIB_PROCESS_DEFAULT_GIVE_ASID_POOL,
+    .create_fault_ep    = CONFIG_LIB_PROCESS_DEFAULT_CREATE_FAULT_EP,
     .existing_fault_ep  = seL4_CapNull,
 };
 

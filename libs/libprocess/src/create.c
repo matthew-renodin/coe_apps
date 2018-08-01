@@ -225,6 +225,12 @@ int process_create(const char *elf_file_name,
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     libprocess_guard(error, -12, copy_cap_fail, "Failed to copy cap into child cnode.");
 
+    if(handle->attrs.give_asid_pool) {
+        dst.capPtr = INIT_CHILD_ASID_POOL_SLOT;
+        vka_cspace_make_path(&init_objects.vka, init_objects.asid_pool_cap, &src);
+        error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+        libprocess_guard(error, -12, copy_cap_fail, "Failed to copy cap into child cnode.");
+    }
 
     handle->cnode_next_free = INIT_CHILD_FIRST_FREE_SLOT;
     init_data__init(&handle->init_data);

@@ -12,4 +12,10 @@ child_example-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default 
                   libplatsupport libsel4platsupport libcpio libelf \
                   libprocess libthread libinit libmmap libsel4sync liblockwrapper
 
-child_example: $(child_example-y)
+
+child_example-components-y += dummy
+child_example-components = $(addprefix $(STAGE_BASE)/bin/, $(child_example-components-y))
+
+child_example: export COMPONENTS=${child_example-components}
+child_example: ${child_example-components-y} $(child_example-y)
+

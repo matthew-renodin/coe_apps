@@ -37,6 +37,20 @@ static void free_process_objects(process_object_t* list) {
     }
 }
 
+static void revoke_process_objects(process_object_t *list) {
+    while(list != NULL) {
+        cspacepath_t path;
+        vka_cspace_make_path(&init_objects.vka, list->obj.cptr, &path);
+
+        seL4_CNode_Revoke(path.root, path.capPtr, path.capDepth);
+        vka_free_object(&init_objects.vka, &list->obj);
+
+        process_object_t *temp = list;
+        list = list->next;
+        free(temp);
+    }
+}
+
 
 int process_destroy(process_handle_t *handle)
 {
@@ -58,6 +72,7 @@ int process_destroy(process_handle_t *handle)
         path.root = handle->cnode.cptr;
         path.capPtr = i;
         path.capDepth = handle->attrs.cnode_size_bits;
+        vka_cnode_revoke(&path); /* TODO how does revoke change this? */
         vka_cnode_delete(&path); /* TODO how does revoke change this? */
     }
 
@@ -111,7 +126,7 @@ int process_destroy(process_handle_t *handle)
     /**
      * Free all the untypeds
      */
-    free_process_objects(handle->untyped_allocation_list);
+    revoke_process_objects(handle->untyped_allocation_list);
     handle->untyped_allocation_list = NULL;
     
     libprocess_return_success();

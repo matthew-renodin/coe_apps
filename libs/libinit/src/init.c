@@ -304,6 +304,7 @@ int init_process(void) {
     init_objects.page_dir_cap = INIT_CHILD_PAGE_DIR_SLOT;
     init_objects.tcb_cap = INIT_CHILD_TCB_SLOT;
     init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
+    init_objects.asid_pool_cap = INIT_CHILD_ASID_POOL_SLOT;
     init_objects.sync_notification_cap = INIT_CHILD_SYNC_NOTIFICATION_SLOT;
     init_objects.proc_name = init_objects.init_data->proc_name;
     init_objects.initialized = 1;

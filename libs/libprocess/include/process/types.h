@@ -178,6 +178,8 @@ typedef struct process_attr {
 
     bool create_fault_ep;
     seL4_CPtr existing_fault_ep;
+
+    bool give_asid_pool;
 } process_attr_t;
 
 

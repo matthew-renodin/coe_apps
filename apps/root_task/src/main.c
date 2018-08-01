@@ -445,10 +445,10 @@ UNUSED static void demo(void) {
     /**
      * Give each process 16 MB (2^20*16) of untyped kernel objects
      */
-    err = process_give_untyped_resources(&child1, 20, 16);
+    err = process_give_untyped_resources(&child1, 22, 4);
     ZF_LOGF_IF(err, "Failed to give untyped.");
 
-    err = process_give_untyped_resources(&child2, 20, 16);
+    err = process_give_untyped_resources(&child2, 22, 4);
     ZF_LOGF_IF(err, "Failed to give untyped.");
 
 
@@ -487,8 +487,8 @@ UNUSED static void demo(void) {
     process_destroy(&child2);
     seL4_DebugDumpScheduler();
 
-
     seL4_DebugProcMap();
+    seL4_DebugDumpScheduler();
 }
 
 

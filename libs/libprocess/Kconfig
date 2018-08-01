@@ -46,3 +46,17 @@ config LIB_PROCESS_DEFAULT_CNODE_SIZE_BITS
     default 17
     help
         Unless a process_attr_t is given, this default value will be set.
+
+config LIB_PROCESS_DEFAULT_GIVE_ASID_POOL
+    int "Default determining whether an ASID pool cap is given"
+    depends on LIB_PROCESS
+    default 1
+    help
+        Unless a process_attr_t is given, this default value will be set.
+
+config LIB_PROCESS_DEFAULT_CREATE_FAULT_EP
+    int "Default determining whether a new fault endpoint is created for the child process"
+    depends on LIB_PROCESS
+    default 0
+    help
+        Unless a process_attr_t is given, this default value will be set.
