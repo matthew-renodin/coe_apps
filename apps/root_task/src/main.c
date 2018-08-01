@@ -244,16 +244,16 @@ UNUSED static void test_process_leaks(void) {
                              "dummy",        /* Process name */
                              &process_default_attrs,
                              &dummy);
-        ZF_LOGF_IF(err, "Failed to create dummy. cycles: %lu", num_cycles);
+        ZF_LOGF_IF(err, "Failed to create dummy. cycles: %lu", (long unsigned)num_cycles);
 
         char *argv[] = { "\0" };
         err = process_run(&dummy, sizeof(argv)/sizeof(argv[0]), argv);
-        ZF_LOGF_IF(err, "Failed to run dummy. cycles: %lu", num_cycles);
+        ZF_LOGF_IF(err, "Failed to run dummy. cycles: %lu", (long unsigned)num_cycles);
 
         seL4_Yield();
         
         err = process_destroy(&dummy);
-        ZF_LOGF_IF(err, "Failed to destroy dummy. cycles: %lu", num_cycles);
+        ZF_LOGF_IF(err, "Failed to destroy dummy. cycles: %lu", (long unsigned)num_cycles);
     }
 
 }
@@ -487,6 +487,16 @@ UNUSED static void demo(void) {
     process_destroy(&child2);
     seL4_DebugDumpScheduler();
 
+    err = process_free_conn_obj(&echo1ep);
+    err |= process_free_conn_obj(&echo1notif);
+    err |= process_free_conn_obj(&echo2notif);
+    err |= process_free_conn_obj(&echo1shmem);
+    err |= process_free_conn_obj(&echo2shmem);
+    err |= process_free_conn_obj(&child1_obj);
+    err |= process_free_conn_obj(&child2_notif);
+    err |= process_free_conn_obj(&child2_shmem_obj);
+    ZF_LOGF_IF(err, "Failed to free an object");
+
     seL4_DebugProcMap();
     seL4_DebugDumpScheduler();
 }
@@ -502,17 +512,22 @@ int main(void) {
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
 
-#ifdef RUN_TESTS
-    test_libthread();
-    test_libprocess();
-    //test_thread_init_objects();
-    //test_process_leaks();
-    ZF_LOGI("\n\nFINISHED ALL TESTS\n\n");
-#endif
-
-#ifdef RUN_DEMO
-    demo();
-#endif
+    int cycle_count = 0;
+    while(1) {
+        ZF_LOGI("\n\nSTARTING CYCLE %i\n\n", cycle_count++);
+    #ifdef RUN_TESTS
+        test_libthread();
+        test_libprocess();
+        //test_thread_init_objects();
+        //test_process_leaks();
+        ZF_LOGI("\nFINISHED ALL TESTS\n");
+    #endif
+    
+    #ifdef RUN_DEMO
+        demo();
+        ZF_LOGI("\nFINISHED DEMO\n");
+    #endif
+    }
 
     return 0;
 }

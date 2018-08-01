@@ -69,8 +69,6 @@ void * worker_thread(void *cookie) {
 
     } else {
         seL4_MessageInfo_t msg = seL4_Recv(ep_cap, NULL);
-        seL4_DebugProcMap();
-        seL4_DebugDumpScheduler();
         printf("Got message %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
 
         strcpy(shmem[1], "Hello  brother #1!\n");
@@ -96,8 +94,6 @@ int main(int argc, char **argv) {
 
     my_name = argv[0];
     ep_name = argv[1];
-
-
 
     process_handle_t child;
     error = process_create("dummy",

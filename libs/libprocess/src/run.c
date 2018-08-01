@@ -106,7 +106,7 @@ int process_run(process_handle_t *handle, int argc, char *argv[])
      */
     seL4_Word raw_size = init_data__get_packed_size(&handle->init_data);
     seL4_Word init_data_len = ROUND_UP(raw_size, PAGE_SIZE_4K);
-    ZF_LOGV("Starting process with init data size: %lu", raw_size);
+    ZF_LOGV("Starting process with init data size: %lu", (long unsigned)raw_size);
 
     void *init_data_vaddr;
     reservation_t res; 

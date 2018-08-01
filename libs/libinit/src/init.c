@@ -351,11 +351,12 @@ int init_process(void) {
          */
         cspacepath_t path;
         vka_cspace_make_path(&init_objects.vka, iter->cap, &path);
+        size_t ut_size = (size_t)iter->size;
 
         error = allocman_utspace_add_uts(init_objects.allocman,
                                          1,
                                          &path,
-                                         &iter->size, /* TODO: Is this conversion valid? */
+                                         &ut_size,
                                          (uintptr_t *)&iter->phys_addr, /* TODO optional! */
                                          ALLOCMAN_UT_KERNEL);
         ZF_LOGF_IF(error, "Failed to add untyped");

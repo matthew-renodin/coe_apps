@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
             seL4_Word badge;
             seL4_MessageInfo_t msg = seL4_Recv(testep, &badge);
             seL4_Word num = seL4_MessageInfo_get_label(msg);
-            ZF_LOGI("Recieved: %lu from %lu", num, badge);
+            ZF_LOGI("Recieved: %lu from %lu", (long unsigned)num, (long unsigned)badge);
             seL4_Reply(seL4_MessageInfo_new(num + offset,0,0,0));
         }
     } else {
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 
         seL4_Word reply = seL4_MessageInfo_get_label(msg);
         
-        ZF_LOGI("Got Reply: %lu", reply);
+        ZF_LOGI("Got Reply: %lu", (long unsigned)reply);
         ZF_LOGF_IF(reply != my_num + offset, "Invalid reply recieved");
 
         int *shmem = (int *)init_lookup_shmem("testshmem");
