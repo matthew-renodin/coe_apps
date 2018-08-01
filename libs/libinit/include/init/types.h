@@ -47,6 +47,7 @@ typedef struct init_objects {
     sync_recursive_mutex_t init_lock;
 
     int initialized;
+    int has_untypeds;
 
     vspace_t vspace;
     vka_t vka;

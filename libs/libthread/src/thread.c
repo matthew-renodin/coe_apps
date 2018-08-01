@@ -36,9 +36,7 @@ thread_handle_t *thread_handle_create(const thread_attr_t *attr)
 {
     libthread_prologue(thread_handle_t *, NULL);
 
-    libthread_guard(!init_check_initialized(), NULL, libthread_epilogue,
-                    "Init objects (vka, vspace) have not been setup.\n"
-                    "Run init_process or init_root_task to setup.");
+    libthread_check_initialized(NULL);
     
     libthread_guard(attr == NULL, NULL, libthread_epilogue,
                     "Null thread attr passed into thread_handle_create");
@@ -269,9 +267,7 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     libthread_prologue(thread_handle_t *, NULL);
     int error;
 
-    libthread_guard(!init_check_initialized(), NULL, libthread_epilogue,
-                    "Init objects (vka, vspace) have not been setup.\n"
-                    "Run init_process or init_root_task to setup.");
+    libthread_check_initialized(NULL);
 
     libthread_guard(attr == NULL, NULL, libthread_epilogue,
                     "Null thread attr passed into thread_handle_create_custom");
@@ -372,9 +368,7 @@ int thread_destroy_free_handle_custom(thread_handle_t **handle_ref,
     libthread_prologue(int, 0);
     UNUSED int error;
 
-    libthread_guard(!init_check_initialized(), -1, libthread_epilogue,
-                    "Init objects (vka, vspace) have not been setup.\n"
-                    "Run init_process or init_root_task to setup.");
+    libthread_check_initialized(-1);
 
     libthread_guard(handle_ref == NULL || *handle_ref == NULL,
                     -2, libthread_epilogue,
