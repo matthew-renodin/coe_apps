@@ -41,6 +41,8 @@
 /* Include seL4 COE library headers */
 #include <init/init.h>
 #include <process/process.h>
+#include <thread/thread.h>
+#include <atomic_sync/sync.h>
 
 #define RUN_TESTS
 #define RUN_DEMO
@@ -136,7 +138,6 @@ UNUSED static void test_libprocess(void) {
                            &test_procs[0]);
     assert(error != 0);
 
-
     for(i = 0; i < NUM_TEST_PROCS; i++) {
         char *proc_name;
         error = asprintf(&proc_name, "test_proc%i", i);
@@ -148,6 +149,7 @@ UNUSED static void test_libprocess(void) {
                                &test_procs[i]);
         assert(error == 0);
         test_procs_perms[i] = seL4_CanRead;
+        free(proc_name);
     }
 
 
@@ -210,7 +212,9 @@ UNUSED static void test_libprocess(void) {
         seL4_Yield();
     }
 
-    
+
+
+
     for(i = 0; i < NUM_TEST_PROCS; i++) {
         error = process_destroy(&test_procs[i]);
         ZF_LOGF_IF(error, "Failed to destroy process");
@@ -251,7 +255,7 @@ UNUSED static void test_process_leaks(void) {
         ZF_LOGF_IF(err, "Failed to run dummy. cycles: %lu", (long unsigned)num_cycles);
 
         seL4_Yield();
-        
+
         err = process_destroy(&dummy);
         ZF_LOGF_IF(err, "Failed to destroy dummy. cycles: %lu", (long unsigned)num_cycles);
     }
@@ -479,13 +483,8 @@ UNUSED static void demo(void) {
     /**
      * Test process destruction.
      */
-    ZF_LOGD("Destroying 1...");
     process_destroy(&child1);
-    seL4_DebugDumpScheduler();
-
-    ZF_LOGD("Destroying 2...");
     process_destroy(&child2);
-    seL4_DebugDumpScheduler();
 
     err = process_free_conn_obj(&echo1ep);
     err |= process_free_conn_obj(&echo1notif);
@@ -497,10 +496,50 @@ UNUSED static void demo(void) {
     err |= process_free_conn_obj(&child2_shmem_obj);
     ZF_LOGF_IF(err, "Failed to free an object");
 
-    seL4_DebugProcMap();
-    seL4_DebugDumpScheduler();
+    //seL4_DebugProcMap();
+    //seL4_DebugDumpScheduler();
 }
 
+
+
+volatile int runner_count;
+cond_t runner_cond;
+
+void * test_runner(void* cookie) {
+    int cycle_count = 0;
+
+    while(1) {
+        cycle_count++;
+
+   #ifdef RUN_TESTS
+       test_libthread();
+       test_libprocess();
+       //test_process_leaks();
+       //test_thread_init_objects();
+   #endif
+
+   #ifdef RUN_DEMO
+       demo();
+   #endif
+        ZF_LOGI("Made it here!");
+        cond_lock_acquire(&runner_cond);
+        
+        runner_count--;
+        if(runner_count == 0) {
+            ZF_LOGI("\n\n\n>>>>> ALL CORES FINISHED TEST, RESTARTING...");
+            ZF_LOGI(">>>>> STARTING CYCLE %i", cycle_count);
+            runner_count = CONFIG_MAX_NUM_NODES;
+            cond_broadcast(&runner_cond);
+        } else {
+            ZF_LOGI("Waiting for condition: %i %i", (int)thread_get_id(),(int)runner_count);
+            cond_wait(&runner_cond);
+        }
+        
+        cond_lock_release(&runner_cond);
+
+    }
+
+}
 
 
 /**
@@ -512,22 +551,21 @@ int main(void) {
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
 
-    int cycle_count = 0;
-    while(1) {
-        ZF_LOGI("\n\nSTARTING CYCLE %i\n\n", cycle_count++);
-    #ifdef RUN_TESTS
-        test_libthread();
-        test_libprocess();
-        //test_thread_init_objects();
-        //test_process_leaks();
-        ZF_LOGI("\nFINISHED ALL TESTS\n");
-    #endif
-    
-    #ifdef RUN_DEMO
-        demo();
-        ZF_LOGI("\nFINISHED DEMO\n");
-    #endif
+    cond_init(&runner_cond, LOCK_NOTIFICATION);
+    runner_count = CONFIG_MAX_NUM_NODES;
+
+    for(int i = 0; i < CONFIG_MAX_NUM_NODES; i++) {
+        thread_attr_t attr = { .stack_size_pages = 32,
+                               .priority = seL4_MaxPrio,
+                               .cpu_affinity = i };
+        thread_handle_t *handle = thread_handle_create(&attr);
+        ZF_LOGF_IF(handle == NULL, "Failed to create thread");
+
+        err = thread_start(handle, test_runner, NULL);
+        ZF_LOGF_IF(err, "Failed to start thread"); 
     }
+
+    seL4_DebugDumpScheduler();
 
     return 0;
 }

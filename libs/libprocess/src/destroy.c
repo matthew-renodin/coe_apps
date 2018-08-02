@@ -22,34 +22,7 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 #include <process/sync.h>
-
-
-/**
- *  This convenience function assumes you hold the process lock
- **/
-static void free_process_objects(process_object_t* list) {
-    while(list != NULL) {
-        vka_free_object(&init_objects.vka, &list->obj);
-
-        process_object_t *temp = list;
-        list = list->next;
-        free(temp);
-    }
-}
-
-static void revoke_process_objects(process_object_t *list) {
-    while(list != NULL) {
-        cspacepath_t path;
-        vka_cspace_make_path(&init_objects.vka, list->obj.cptr, &path);
-
-        seL4_CNode_Revoke(path.root, path.capPtr, path.capDepth);
-        vka_free_object(&init_objects.vka, &list->obj);
-
-        process_object_t *temp = list;
-        list = list->next;
-        free(temp);
-    }
-}
+#include <process/internal.h>
 
 
 int process_destroy(process_handle_t *handle)
@@ -84,7 +57,7 @@ int process_destroy(process_handle_t *handle)
     /**
      * Free page tables allocated by vspace
      */
-    free_process_objects(handle->vspace_allocation_list);
+    libprocess_free_objects(handle->vspace_allocation_list);
     handle->vspace_allocation_list = NULL;
 
     /**
@@ -95,6 +68,10 @@ int process_destroy(process_handle_t *handle)
     vka_free_object(&init_objects.vka, &handle->vspace_lock_notification);
     vka_free_object(&init_objects.vka, &handle->vka_lock_notification);
     vka_free_object(&init_objects.vka, &handle->init_data_lock_notification);
+
+    if(handle->attrs.create_fault_ep && handle->fault_ep.cptr != seL4_CapNull) {
+        vka_free_object(&init_objects.vka, &handle->fault_ep);
+    }
 
     /**
      * Free malloced elf metadata
@@ -122,12 +99,19 @@ int process_destroy(process_handle_t *handle)
         free(tmp);
     }
 
+    /**
+     * Free the device objects
+     */
+    libprocess_free_objects(handle->device_allocation_list);
 
     /**
      * Free all the untypeds
      */
-    revoke_process_objects(handle->untyped_allocation_list);
+    libprocess_revoke_objects(handle->untyped_allocation_list);
     handle->untyped_allocation_list = NULL;
+
+    /* Free the strduped name */
+    free(handle->name);
     
     libprocess_return_success();
     libprocess_epilogue();

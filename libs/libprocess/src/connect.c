@@ -99,8 +99,10 @@ static int init_conn_obj(process_conn_type_t typ,
     libprocess_prologue();
 
     obj->typ = typ;
-    obj->name = name;
     obj->ref_count = 0;
+    obj->name = strndup(name, CONFIG_LIBPROCESS_MAX_STR_LEN);
+    libprocess_check_malloc(obj->name, libprocess_epilogue);
+
 
     switch(typ) {
         case PROCESS_ENDPOINT:
@@ -115,9 +117,13 @@ static int init_conn_obj(process_conn_type_t typ,
         default:
             libprocess_guard(true, -1, libprocess_epilogue, "Invalid conn type");
     }
-    libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue, "Failed to init object");
+    libprocess_guard(libprocess_get_status(), -1, failed, "Failed to init object");
 
     libprocess_return_success();
+
+failed:
+    free(obj->name);
+
     libprocess_epilogue();
 }
 
@@ -212,6 +218,7 @@ int process_free_conn_obj(process_conn_obj_t **obj)
     libprocess_guard(libprocess_get_status(), -1, libprocess_epilogue,
                      "Failed to cleanup conn obj");
 
+    free((*obj)->name);
     free(*obj);
     *obj = NULL;
 

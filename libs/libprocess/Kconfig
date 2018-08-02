@@ -12,6 +12,13 @@ menuconfig LIB_PROCESS
     help
         A library to help manage starting, destroying, and configuring processes. 
 
+config LIBPROCESS_MAX_STR_LEN
+    int "Maximum string length"
+    depends on LIB_PROCESS
+    default 64
+    help
+        Max length for connection object names, device names, and process names
+
 config LIB_PROCESS_DEFAULT_HEAP_SIZE_PAGES
     int "Default heap size pages"
     depends on LIB_PROCESS
@@ -60,3 +67,4 @@ config LIB_PROCESS_DEFAULT_CREATE_FAULT_EP
     default 0
     help
         Unless a process_attr_t is given, this default value will be set.
+

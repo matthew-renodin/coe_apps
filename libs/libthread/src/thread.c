@@ -345,7 +345,7 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
     error = seL4_TCB_SetPriority(handle->tcb.cptr, init_objects.tcb_cap, attr->priority);
     ZF_LOGW_IF(error, "Failed to set priority");
    
-#ifdef ENABLE_SMP_SUPPORT 
+#if CONFIG_MAX_NUM_NODES > 1
     error = seL4_TCB_SetAffinity(handle->tcb.cptr, attr->cpu_affinity);
     ZF_LOGW_IF(error, "Failed to set affinity");
 #endif

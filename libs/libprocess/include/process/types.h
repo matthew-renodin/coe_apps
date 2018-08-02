@@ -118,7 +118,7 @@ typedef struct process_shmem_conn {
  */
 typedef struct process_conn_obj {
     process_conn_type_t typ;
-    const char *name;
+    char *name;
     seL4_Word ref_count;
 
     /**
@@ -189,7 +189,7 @@ typedef struct process_attr {
 typedef struct process_handle {
 
     process_state_t state;
-    const char *name;
+    char *name;
     process_attr_t attrs;
 
     /**
@@ -208,7 +208,7 @@ typedef struct process_handle {
     /**
      * This is the location of the heap in the child's address space.
      */
-    void* heap_vaddr;
+    void *heap_vaddr;
 
     /**
      * Process specific objects that we create on behalf of the child.
@@ -235,6 +235,12 @@ typedef struct process_handle {
     vspace_t vspace;
     sel4utils_alloc_data_t vspace_data;
     process_object_t *vspace_allocation_list;
+
+
+    /**
+     * Place to store allocated device objects for later freeing
+     */
+    process_object_t *device_allocation_list;
 
     /**
      * Details about the cspace layout of the child

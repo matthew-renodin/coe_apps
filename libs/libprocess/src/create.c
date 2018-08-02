@@ -23,6 +23,7 @@
 #include <mmap/mmap.h>
 #include <process/process.h>
 #include <process/sync.h>
+#include <process/internal.h>
 #include <lockwrapper/lockwrapper.h>
 
 int process_lib_lock_initialized = 0;
@@ -34,6 +35,9 @@ mutex_t process_lib_lock = {0};
 void process_allocated_object(void* cookie, vka_object_t obj)
 {
     process_handle_t *handle = (process_handle_t*)cookie;
+    /**
+     * TODO: erro checking
+     */
     process_object_t *new_object = (process_object_t*)malloc(sizeof(process_object_t));
     new_object->obj = obj;
     new_object->next = handle->vspace_allocation_list;
@@ -60,10 +64,13 @@ int process_create(const char *elf_file_name,
     /* Keep our own copy of the attrs for future reference, if it's null use the defaults */
     handle->attrs = (attr == NULL) ? process_default_attrs : *attr;
  
-    handle->name = proc_name;
+    handle->name = strndup(proc_name, CONFIG_LIBPROCESS_MAX_STR_LEN);
+    libprocess_check_malloc(handle->name, libprocess_epilogue);
+
     handle->state = PROCESS_INIT;
     handle->vspace_allocation_list = NULL;
     handle->untyped_allocation_list = NULL;
+    handle->device_allocation_list = NULL;
     handle->shared_objects = NULL;
 
     /**
@@ -72,7 +79,7 @@ int process_create(const char *elf_file_name,
     error = vka_alloc_cnode_object(&init_objects.vka,
                                    handle->attrs.cnode_size_bits,
                                    &handle->cnode);
-    libprocess_guard(error, -5, libprocess_epilogue, "Failed to allocate a cnode.");
+    libprocess_guard(error, -5, alloc_cnode_fail, "Failed to allocate a cnode.");
 
     if(handle->attrs.create_fault_ep) {
         error = vka_alloc_endpoint(&init_objects.vka, &handle->fault_ep);
@@ -254,6 +261,7 @@ int process_create(const char *elf_file_name,
     elf_phdrs_fail:
     elf_load_fail:
         vspace_tear_down(&handle->vspace, VSPACE_FREE);
+        libprocess_free_objects(handle->vspace_allocation_list);
     get_vspace_fail:
         vka_free_object(&init_objects.vka, &handle->init_data_lock_notification);
     alloc_init_lock_fail:
@@ -268,6 +276,8 @@ int process_create(const char *elf_file_name,
         }
     alloc_fep_fail:
         vka_free_object(&init_objects.vka, &handle->cnode);
+    alloc_cnode_fail:
+        free(handle->name);
     
     libprocess_epilogue();
 }

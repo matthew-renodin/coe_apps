@@ -101,4 +101,28 @@ int libprocess_delete_cap_last_slot(process_handle_t *handle)
 
 
 
+void libprocess_free_objects(process_object_t *list)
+{
+    while(list != NULL) {
+        vka_free_object(&init_objects.vka, &list->obj);
 
+        process_object_t *temp = list;
+        list = list->next;
+        free(temp);
+    }
+}
+
+void libprocess_revoke_objects(process_object_t *list)
+{
+    while(list != NULL) {
+        cspacepath_t path;
+        vka_cspace_make_path(&init_objects.vka, list->obj.cptr, &path);
+
+        seL4_CNode_Revoke(path.root, path.capPtr, path.capDepth);
+        vka_free_object(&init_objects.vka, &list->obj);
+
+        process_object_t *temp = list;
+        list = list->next;
+        free(temp);
+    }
+}

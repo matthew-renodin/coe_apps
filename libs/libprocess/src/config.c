@@ -369,16 +369,21 @@ int process_add_device_irq(process_handle_t *handle,
                      "Failed to get an IRQ handler cap from the IRQControl cap");
 
     /**
+     * Allocate a process object to track our notification
+     */
+    process_object_t *notif_obj = malloc(sizeof(process_object_t));
+    libprocess_check_malloc(notif_obj, delete_irq_cap);
+
+    /**
      * Allocate a notification object.
      */
-    vka_object_t irq_notification;
-    libprocess_set_status(vka_alloc_notification(&init_objects.vka, &irq_notification));
-    libprocess_guard(libprocess_get_status(), -6, free_cspace,
+    libprocess_set_status(vka_alloc_notification(&init_objects.vka, &notif_obj->obj));
+    libprocess_guard(libprocess_get_status(), -6, free_notif_obj,
                      "Failed to allocate a notification object");
     /**
      * bind the notification to our irq cap
      */
-    libprocess_set_status(seL4_IRQHandler_SetNotification(irq_cap, irq_notification.cptr));
+    libprocess_set_status(seL4_IRQHandler_SetNotification(irq_cap, notif_obj->obj.cptr));
     libprocess_guard(libprocess_get_status(), -6, free_notification,
                      "Failed to bind our irq to the notification");
 
@@ -387,18 +392,24 @@ int process_add_device_irq(process_handle_t *handle,
      */
     seL4_IRQHandler_Ack(irq_cap);
 
-    libprocess_set_status(copy_irq_to_proc(handle, irq_cap, irq_notification.cptr, irq_number, device_name));
+    libprocess_set_status(copy_irq_to_proc(handle, irq_cap, notif_obj->obj.cptr, irq_number, device_name));
     libprocess_guard(libprocess_get_status(), -6, free_notification,
                      "Failed to copy irq caps to proc");
 
+    LINKED_LIST_PREPEND(notif_obj, handle->device_allocation_list);
+
     free_parent_cap(irq_cap);
-    free_parent_cap(irq_notification.cptr);
     libprocess_return_success();
 
     free_notification:
-        vka_free_object(&init_objects.vka, &irq_notification);
+        vka_free_object(&init_objects.vka, &notif_obj->obj);
+    free_notif_obj:
+        free(notif_obj);
+    delete_irq_cap:
+        vka_cnode_delete(&irq_path);
     free_cspace:
         vka_cspace_free(&init_objects.vka, irq_cap);
+
     libprocess_epilogue();
 
 }

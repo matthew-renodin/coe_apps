@@ -42,3 +42,7 @@ seL4_CPtr libprocess_mint_cap_next_slot(process_handle_t *handle,
 int libprocess_delete_cap_last_slot(process_handle_t *handle);
 
 void libprocess_next_free_path(cspacepath_t *dst, process_handle_t *handle);
+
+
+void libprocess_free_objects(process_object_t *list);
+void libprocess_revoke_objects(process_object_t *list);
