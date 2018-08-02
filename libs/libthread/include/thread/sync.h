@@ -89,3 +89,16 @@ libthread_epilogue:
 #define libthread_epilogue() \
 libthread_custom_epilogue() \
     libthread_return_value(_libthread_status)
+
+/**
+ *  Convenience Functions
+ **/
+
+#define libthread_check_initialized(fail_return) \
+    libthread_guard(!init_check_initialized(), fail_return, libthread_epilogue, \
+                    "Init objects (vka, vspace) have not been setup.\n" \
+                    "Run init_process or init_root_task to setup."); \
+    libthread_guard(!init_has_untypeds(), fail_return, libthread_epilogue, \
+                    "This object has not been allocated untyped memory,\n" \
+                    "which is necessary for thread creation.")
+    

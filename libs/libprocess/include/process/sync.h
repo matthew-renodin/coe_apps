@@ -86,7 +86,8 @@ libprocess_custom_epilogue() \
     libprocess_guard(condition, error##_NUMBER, error_symbol, error##_STRING)
 
 #define libprocess_check_initialized() \
-    libprocess_error_guard(!init_check_initialized(), INITIALIZATION_ERROR, libprocess_epilogue)
+    libprocess_error_guard(!init_check_initialized(), INITIALIZATION_ERROR, libprocess_epilogue); \
+    libprocess_error_guard(!init_has_untypeds(), UNTYPEDS_ERROR, libprocess_epilogue);
 
 #define libprocess_check_arg(arg) \
     libprocess_error_guard((arg) == NULL, NULL_ARG_ERROR, libprocess_epilogue)

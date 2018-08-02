@@ -368,6 +368,11 @@ int init_process(void) {
     ZF_LOGV("Added %lu untyped objects to allocman, totalling: %luK",
             (unsigned long) total_ut_count,
             (unsigned long) total_ut_memory / 1024);
+    
+    /**
+     * At this point, we have untypeds and the VKA to use them
+     **/
+    init_objects.has_untypeds = (total_ut_count > 0) ? 1 : 0;
 
     /**
      * Setup an existing frames list.
@@ -584,6 +589,9 @@ int init_root_task(void) {
     }
     sync_mutex_init(&init_objects.vka_lock, vka_lock_notification.cptr);
     lockvka_replace(&init_objects.lockvka, &init_objects.vka, sync_mutex_make_interface(&init_objects.vka_lock));
+
+    /* At this point we are a process with untyped memory and the vka to use it */
+    init_objects.has_untypeds = 1;
 
     /* 
      * Setup the vspace object. This bookkeeps/manages the virtual memory mappings.

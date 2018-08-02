@@ -41,6 +41,11 @@ init_check_initialized(void) {
     return __atomic_load_n(&init_objects.initialized, __ATOMIC_SEQ_CST) ? true : false;
 }
 
+static inline bool
+init_has_untypeds(void) {
+    return __atomic_load_n(&init_objects.has_untypeds, __ATOMIC_SEQ_CST) ? true : false;
+}
+
 static inline int
 init_lock_init(seL4_CPtr notification) {
     #ifdef CONFIG_DEBUG_BUILD
