@@ -5,7 +5,7 @@
                                     "Run init_process or init_root_task to complete."
 
 #define UNTYPEDS_ERROR_NUMBER -1
-#define UNTYPEDS_ERROR_STRING "This object has not been allocated untyped memory,\n" \
+#define UNTYPEDS_ERROR_STRING "This process has not been allocated untyped memory,\n" \
                               "which is necessary for process creation."
 
 #define NULL_ARG_ERROR_NUMBER -2
