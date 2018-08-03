@@ -101,6 +101,11 @@ int process_create(const char *elf_file_name,
     error = vka_alloc_notification(&init_objects.vka, &handle->init_data_lock_notification);
     libprocess_guard(error, -5, alloc_init_lock_fail, "Failed to allocate a notification.");
 
+    error = vka_alloc_notification(&init_objects.vka, &handle->process_lock_notification);
+    libprocess_guard(error, -5, alloc_process_lock_fail, "Failed to allocate a notification.");
+
+    error = vka_alloc_notification(&init_objects.vka, &handle->thread_lock_notification);
+    libprocess_guard(error, -5, alloc_thread_lock_fail, "Failed to allocate a notification.");
 
 #ifndef CONFIG_ARCH_X86_64
     /**
@@ -232,6 +237,16 @@ int process_create(const char *elf_file_name,
     error = vka_cnode_copy(&dst, &src, seL4_AllRights);
     libprocess_guard(error, -12, copy_cap_fail, "Failed to copy cap into child cnode.");
 
+    dst.capPtr = INIT_CHILD_PROCESS_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->process_lock_notification.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    libprocess_guard(error, -12, copy_cap_fail, "Failed to copy cap into child cnode.");
+
+    dst.capPtr = INIT_CHILD_THREAD_LOCK_SLOT;
+    vka_cspace_make_path(&init_objects.vka, handle->thread_lock_notification.cptr, &src);
+    error = vka_cnode_copy(&dst, &src, seL4_AllRights);
+    libprocess_guard(error, -12, copy_cap_fail, "Failed to copy cap into child cnode.");
+
     if(handle->attrs.give_asid_pool) {
         dst.capPtr = INIT_CHILD_ASID_POOL_SLOT;
         vka_cspace_make_path(&init_objects.vka, init_objects.asid_pool_cap, &src);
@@ -263,6 +278,10 @@ int process_create(const char *elf_file_name,
         vspace_tear_down(&handle->vspace, VSPACE_FREE);
         libprocess_free_objects(handle->vspace_allocation_list);
     get_vspace_fail:
+        vka_free_object(&init_objects.vka, &handle->thread_lock_notification);
+    alloc_thread_lock_fail:
+        vka_free_object(&init_objects.vka, &handle->process_lock_notification);
+    alloc_process_lock_fail:
         vka_free_object(&init_objects.vka, &handle->init_data_lock_notification);
     alloc_init_lock_fail:
         vka_free_object(&init_objects.vka, &handle->vka_lock_notification);

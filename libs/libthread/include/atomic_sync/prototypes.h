@@ -82,7 +82,7 @@ int mutex_notification_init(mutex_t *mutex, seL4_CPtr notification);
  * @param       notification        seL4_CPtr of the notification the lock uses
  * @return                          Error code
  */
-int mutex_notification_recursive_init(mutex_t *mutex, seL4_CPtr notification);
+int mutex_recursive_init(mutex_t *mutex, seL4_CPtr notification);
 
 /**
  * @brief Acquire the mutex lock

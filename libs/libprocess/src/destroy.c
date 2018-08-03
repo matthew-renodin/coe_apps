@@ -68,6 +68,8 @@ int process_destroy(process_handle_t *handle)
     vka_free_object(&init_objects.vka, &handle->vspace_lock_notification);
     vka_free_object(&init_objects.vka, &handle->vka_lock_notification);
     vka_free_object(&init_objects.vka, &handle->init_data_lock_notification);
+    vka_free_object(&init_objects.vka, &handle->process_lock_notification);
+    vka_free_object(&init_objects.vka, &handle->thread_lock_notification);
 
     if(handle->attrs.create_fault_ep && handle->fault_ep.cptr != seL4_CapNull) {
         vka_free_object(&init_objects.vka, &handle->fault_ep);

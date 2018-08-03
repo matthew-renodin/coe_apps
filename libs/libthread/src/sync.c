@@ -139,17 +139,10 @@ mutex_trylock(mutex_t *mutex){
 
 int mutex_lock(mutex_t *mutex) {
     int status;
-    int i=100;
     while(1) {
         status = mutex_trylock(mutex);
         if(status != LOCK_TRY_AGAIN) {
             return status;
-        }
-        if(i > 0) {
-            i--;
-            seL4_Yield();
-        } else {
-            seL4_Sleep(1000);
         }
     }
     return LOCK_SUCCESS;

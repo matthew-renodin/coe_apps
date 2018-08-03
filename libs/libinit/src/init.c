@@ -306,6 +306,8 @@ int init_process(void) {
     init_objects.fault_cap = INIT_CHILD_FAULT_EP_SLOT;
     init_objects.asid_pool_cap = INIT_CHILD_ASID_POOL_SLOT;
     init_objects.sync_notification_cap = INIT_CHILD_SYNC_NOTIFICATION_SLOT;
+    init_objects.process_lock_cap = INIT_CHILD_PROCESS_LOCK_SLOT;
+    init_objects.thread_lock_cap = INIT_CHILD_THREAD_LOCK_SLOT;
     init_objects.proc_name = init_objects.init_data->proc_name;
     init_objects.initialized = 1;
 
@@ -615,6 +617,22 @@ int init_root_task(void) {
     }
     sync_recursive_mutex_init(&init_objects.vspace_lock, vspace_lock_notification.cptr);
     lockvspace_replace(&init_objects.lockvspace, &init_objects.vspace, sync_recursive_mutex_make_interface(&init_objects.vspace_lock));
+
+    vka_object_t process_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &process_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    init_objects.process_lock_cap = process_lock_notification.cptr;
+
+    vka_object_t thread_lock_notification;
+    error = vka_alloc_notification(&init_objects.vka, &thread_lock_notification);
+    if(error) {
+        ZF_LOGE("Failed to allocate notification object.");
+        return error;
+    }
+    init_objects.thread_lock_cap = thread_lock_notification.cptr;
 
 
     /**

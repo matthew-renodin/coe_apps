@@ -219,6 +219,8 @@ typedef struct process_handle {
     vka_object_t vspace_lock_notification;
     vka_object_t vka_lock_notification;
     vka_object_t init_data_lock_notification;
+    vka_object_t process_lock_notification;
+    vka_object_t thread_lock_notification;
 
     thread_handle_t *main_thread;
 

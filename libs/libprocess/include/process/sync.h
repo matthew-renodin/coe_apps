@@ -18,7 +18,7 @@ static inline void libprocess_lock_init() {
     int expected = 0;
     int error = 0;
     if (unlikely(atomic_compare_exchange_int(&process_lib_lock_initialized, &expected, -1))) {
-        error = mutex_create(&process_lib_lock, LOCK_RECURSIVE_USERSPACE);
+        error = mutex_recursive_init(&process_lib_lock, init_objects.process_lock_cap);
         ZF_LOGF_IF(error, "Failed to initialize libprocess lock");
         __atomic_store_n(&process_lib_lock_initialized, 1, __ATOMIC_SEQ_CST);
     }

@@ -44,7 +44,7 @@
 #include <thread/thread.h>
 #include <atomic_sync/sync.h>
 
-#define RUN_TESTS
+//#define RUN_TESTS
 #define RUN_DEMO
 
 #define NUM_TEST_PROCS 5
@@ -457,17 +457,17 @@ UNUSED static void demo(void) {
 
 
 
-#ifdef CONFIG_PLAT_ZYNQMP
-    err = process_map_device_pages_give_caps(&child1,
-                                             (void *)UART1_PADDR,
-                                             1, /* # of pages */
-                                             PAGE_BITS_4K,
-                                             "UART1-dma");
-    ZF_LOGF_IF(err, "Failed to map UART device");
-    
-    err = process_add_device_irq(&child1, UART1_IRQ, "UART1-irq");
-    ZF_LOGF_IF(err, "Failed to give IRQ device");
-#endif
+//#ifdef CONFIG_PLAT_ZYNQMP
+//    err = process_map_device_pages_give_caps(&child1,
+//                                             (void *)UART1_PADDR,
+//                                             1, /* # of pages */
+//                                             PAGE_BITS_4K,
+//                                             "UART1-dma");
+//    ZF_LOGF_IF(err, "Failed to map UART device");
+//    
+//    err = process_add_device_irq(&child1, UART1_IRQ, "UART1-irq");
+//    ZF_LOGF_IF(err, "Failed to give IRQ device");
+//#endif
 
     char *argv1[] = { "child1", "echo1-ep" }; 
     char *argv2[] = { "child2", "echo1-ep" };
@@ -496,8 +496,6 @@ UNUSED static void demo(void) {
     err |= process_free_conn_obj(&child2_shmem_obj);
     ZF_LOGF_IF(err, "Failed to free an object");
 
-    //seL4_DebugProcMap();
-    //seL4_DebugDumpScheduler();
 }
 
 
@@ -521,7 +519,7 @@ void * test_runner(void* cookie) {
    #ifdef RUN_DEMO
        demo();
    #endif
-        ZF_LOGI("Made it here!");
+
         cond_lock_acquire(&runner_cond);
         
         runner_count--;
@@ -576,7 +574,7 @@ int main(void) {
  */
 void abort(void) {
     while(1) { 
-        nanosleep(&(struct timespec){.tv_sec=1, .tv_nsec=0}, NULL);
+        nanosleep(&(struct timespec){.tv_sec=10, .tv_nsec=0}, NULL);
     }
 }
 
