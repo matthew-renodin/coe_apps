@@ -28,6 +28,29 @@
 
 #define NO_THREAD -1
 
+int mutex_fast_internal_init(ulock_t *lock) {
+    __atomic_store_n(&(lock->value), 0, __ATOMIC_SEQ_CST);
+    return LOCK_SUCCESS;
+}
+
+int mutex_fast_internal_trylock(ulock_t *lock) {
+    int expected = 0;
+    if (atomic_compare_exchange(&lock->value, &expected, 1)) {
+        return LOCK_SUCCESS;
+    } else {
+        return LOCK_TRY_AGAIN;
+    }
+}
+
+int mutex_fast_internal_unlock(ulock_t *lock) {
+    int expected = 1;
+    if(atomic_compare_exchange(&(lock->value), &expected, 0)) {
+        return LOCK_SUCCESS;
+    }
+    ZF_LOGE("Internal lock value is unexpected. Perhaps the lock is corrupted or initialized?");
+    return LOCK_ERROR;
+}
+
 int mutex_create(mutex_t *mutex, lock_type_t type) {
     if(mutex_set_type(mutex, LOCK_NONE) != LOCK_SUCCESS) { return LOCK_ERROR; }
 
@@ -67,15 +90,13 @@ int mutex_create(mutex_t *mutex, lock_type_t type) {
 
 int mutex_fast_init(mutex_t *mutex){
     if(mutex_set_type(mutex, LOCK_MUTEX_USERSPACE) != LOCK_SUCCESS) { return LOCK_ERROR; }
-    __atomic_store_n(&(mutex->fast_lock.value), 0, __ATOMIC_SEQ_CST);
-    return LOCK_SUCCESS;
+    return mutex_fast_internal_init(&mutex->fast_lock);
 }
 
 int mutex_fast_recursive_init(mutex_t *mutex) {
     if(mutex_set_type(mutex, LOCK_RECURSIVE_USERSPACE) != LOCK_SUCCESS) { return LOCK_ERROR; }
-    __atomic_store_n(&(mutex->fast_recursive_lock.value), 0, __ATOMIC_SEQ_CST);
     __atomic_store_n(&(mutex->fast_recursive_lock.holder), NO_THREAD, __ATOMIC_SEQ_CST);
-    return LOCK_SUCCESS;
+    return mutex_fast_internal_init(&mutex->fast_recursive_lock.lock);
 }
 
 int mutex_notification_init(mutex_t *mutex, seL4_CPtr notification) {
@@ -101,27 +122,19 @@ mutex_trylock(mutex_t *mutex){
     UNUSED int status = 0;
     switch(mutex->type) {
     case LOCK_MUTEX_USERSPACE:
-        if (atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 1)) {
-            return LOCK_SUCCESS;
-        } else {
-            return LOCK_TRY_AGAIN;
-        }
+        mutex_fast_internal_trylock(&mutex->fast_lock);
 
-    case LOCK_RECURSIVE_USERSPACE: {
-        int nil_holder = NO_THREAD;
-        int expected_holder = thread_get_id();
-        if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &nil_holder, thread_get_id())) {
-            assert(mutex->fast_recursive_lock.value == 0);
-            status = sync_atomic_increment_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
-            return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
+    case LOCK_RECURSIVE_USERSPACE: 
+        if (mutex->fast_recursive_lock.holder == thread_get_id()) {
+            mutex->fast_recursive_lock.held++;
+            return LOCK_SUCCESS;
+        } 
+        status = mutex_fast_internal_trylock(&(mutex->fast_recursive_lock.lock));
+        if (status == LOCK_SUCCESS) {
+            mutex->fast_recursive_lock.holder = thread_get_id();
+            mutex->fast_recursive_lock.held = 1;
         }
-        else if (atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id())) {
-            status = sync_atomic_increment_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
-            return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
-        } else {
-            return LOCK_TRY_AGAIN;
-        }
-    }
+        return status;
 
     case LOCK_NOTIFICATION:
         status = sync_mutex_lock(&(mutex->notification_lock));
@@ -145,42 +158,37 @@ int mutex_lock(mutex_t *mutex) {
         if(status != LOCK_TRY_AGAIN) {
             return status;
         }
+        #if 0
         if(i > 0) {
             i--;
             seL4_Yield();
         } else {
-            seL4_Sleep(1000);
+            seL4_Sleep(10);
         }
+        #else
+        //seL4_Yield();
+        #endif
     }
     return LOCK_SUCCESS;
 }
 
 int mutex_unlock(mutex_t *mutex) {
-    UNUSED int expected = 1;
     UNUSED int status = 0;
     switch(mutex->type) {
     case LOCK_MUTEX_USERSPACE:
-        if(atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 0)) {
-            return LOCK_SUCCESS;
-        }
-        ZF_LOGE("Internal lock value is unexpected. Perhaps the lock is corrupted or initialized?");
-        return LOCK_ERROR;
+        return mutex_fast_internal_unlock(&mutex->fast_lock);
 
-    case LOCK_RECURSIVE_USERSPACE: {
-        int expected_holder = thread_get_id();
-        if(atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, thread_get_id())) {
-            if(atomic_compare_exchange(&(mutex->fast_lock.value), &expected, 0)) {
-                atomic_compare_exchange(&(mutex->fast_recursive_lock.holder), &expected_holder, NO_THREAD);
-                return LOCK_SUCCESS;
-            } else {
-                status = sync_atomic_decrement_safe (&(mutex->fast_recursive_lock.value), &expected, __ATOMIC_SEQ_CST);
-                return status == 0 ? LOCK_SUCCESS : LOCK_ERROR;
-            }
-        } else {
+    case LOCK_RECURSIVE_USERSPACE:
+        if (mutex->fast_recursive_lock.holder != thread_get_id()) {
             ZF_LOGE("Tried to unlock re-entrant lock without being the holder");
             return LOCK_ERROR;
         }
+        mutex->fast_recursive_lock.held--;
+        if(mutex->fast_recursive_lock.held == 0) {
+            mutex->fast_recursive_lock.holder = NO_THREAD;
+            status = mutex_fast_internal_unlock(&(mutex->fast_recursive_lock.lock));
         }
+        return status;
 
     case LOCK_NOTIFICATION:
         status = sync_mutex_unlock(&(mutex->notification_lock));

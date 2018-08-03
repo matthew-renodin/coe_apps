@@ -43,7 +43,8 @@ typedef struct userspace_spinlock {
 } ulock_t;
 
 typedef struct userspace_spinlock_recursive {
-    volatile int value;
+    struct userspace_spinlock lock;
+    volatile int held;
     volatile int holder;
 } ulock_recursive_t;
 
