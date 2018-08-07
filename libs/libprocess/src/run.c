@@ -38,13 +38,23 @@ static void free_init_data(InitData* data) {
     FREE_INIT_LIST(EndpointData, data->ep_list_head);
     FREE_INIT_LIST(EndpointData, data->notification_list_head);
     FREE_INIT_LIST(SharedMemoryData, data->shmem_list_head);
-    FREE_INIT_LIST(IrqData, data->irq_list_head);
+
+    {
+        IrqData *lst = data->irq_list_head;
+        while(lst != NULL) {
+            free(lst->name);
+            IrqData *tmp = lst;
+            lst = lst->next;
+            free(tmp);
+        }
+    }
 
     {
         DeviceMemoryData *lst = data->devmem_list_head;
         while(lst != NULL) {
             if(lst->caps32 != NULL) free(lst->caps32);
             if(lst->caps64 != NULL) free(lst->caps64);
+            free(lst->name);
             DeviceMemoryData *tmp = lst;
             lst = lst->next;
             free(tmp);

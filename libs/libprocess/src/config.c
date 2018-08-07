@@ -62,7 +62,7 @@ static int copy_irq_to_proc(process_handle_t *handle,
                      "Failed to malloc Irq Data");
 
     irq_data__init(irq_data);
-    irq_data->name = (char *)conn_name; /* protobuf uses non const strings */
+    irq_data->name = strndup(conn_name, CONFIG_LIBPROCESS_MAX_STR_LEN);
     irq_data->irq_cap = libprocess_copy_cap_next_slot(handle, irq_cap, seL4_AllRights);
     libprocess_guard(irq_data->irq_cap == seL4_CapNull, -2, free_data, "Failed to copy IRQ cap");
     irq_data->ep_cap = libprocess_copy_cap_next_slot(handle, ep_cap, seL4_AllRights);
@@ -97,7 +97,7 @@ static int copy_devmem_to_proc(process_handle_t *handle,
                      "Failed to malloc device memory data");
 
     device_memory_data__init(devmem_data);
-    devmem_data->name = (char *)device_name; /* protobuf uses non const strings */
+    devmem_data->name = strndup(device_name, CONFIG_LIBPROCESS_MAX_STR_LEN);
     devmem_data->virt_addr = (seL4_Word)vaddr;
     devmem_data->phys_addr = (seL4_Word)paddr; 
     devmem_data->size_bits = page_bits;

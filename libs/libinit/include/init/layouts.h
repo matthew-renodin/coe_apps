@@ -8,7 +8,7 @@
 
 
 /**
- * Child process cnode layout. Additional caps may be allocted for threads.
+ * Child process cnode layout. Additional caps may be allocted for other resources 
  */
 #define INIT_CHILD_CNODE_SLOT               0
 #define INIT_CHILD_PAGE_DIR_SLOT            1

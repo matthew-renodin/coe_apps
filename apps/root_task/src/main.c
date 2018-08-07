@@ -152,7 +152,6 @@ UNUSED static void test_libprocess(void) {
         free(proc_name);
     }
 
-
     UNUSED process_conn_obj_t *ep;
     UNUSED process_conn_obj_t *notif;
     UNUSED process_conn_obj_t *shmem;
@@ -211,9 +210,6 @@ UNUSED static void test_libprocess(void) {
         seL4_Signal(notif_cap);
         seL4_Yield();
     }
-
-
-
 
     for(i = 0; i < NUM_TEST_PROCS; i++) {
         error = process_destroy(&test_procs[i]);
@@ -548,6 +544,10 @@ int main(void) {
 
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
+
+    for(int j = 0; j < 100; j++) {
+        ZF_LOGI("Ticker: %lu", seL4_GetTicker());
+    }
 
     cond_init(&runner_cond, LOCK_NOTIFICATION);
     runner_count = CONFIG_MAX_NUM_NODES;
