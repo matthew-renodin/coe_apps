@@ -18,7 +18,7 @@ static inline void libprocess_lock_init() {
     int expected = 0;
     int error = 0;
     if (unlikely(atomic_compare_exchange_int(&process_lib_lock_initialized, &expected, -1))) {
-        error = mutex_recursive_init(&process_lib_lock, init_objects.process_lock_cap);
+        error = mutex_notification_init(&process_lib_lock, init_objects.process_lock_cap, true);
         ZF_LOGF_IF(error, "Failed to initialize libprocess lock");
         __atomic_store_n(&process_lib_lock_initialized, 1, __ATOMIC_SEQ_CST);
     }
@@ -41,7 +41,7 @@ libprocess_lock_release() {
 
 static inline bool holding_libprocess_lock() {
     libprocess_lock_init();
-    return (thread_get_id() == process_lib_lock.fast_recursive_lock.holder);
+    return (seL4_GetIPCBuffer() == process_lib_lock.notification_recursive_lock.owner);
 }
 
 /******************************************************************************

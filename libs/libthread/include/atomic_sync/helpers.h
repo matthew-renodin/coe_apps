@@ -19,8 +19,8 @@
  * @TAG(IAI_BSD)
  */
 /*
- * @file prototypes.h
- * @brief Exported prototype definitions for libsync
+ * @file helpers.h
+ * @brief Internal helpers for atomic_sync
  */
 
 #pragma once

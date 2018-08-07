@@ -19,7 +19,7 @@ static inline void libthread_lock_init() {
     int expected = 0;
     int error = 0;
     if (unlikely(atomic_compare_exchange_int(&thread_lib_lock_initialized, &expected, -1))) {
-        error = mutex_create(&thread_lib_lock, LOCK_RECURSIVE_USERSPACE);
+        error = mutex_create(&thread_lib_lock, LOCK_SPINLOCK_RECURSIVE);
         ZF_LOGF_IF(error, "Failed to initialize libthread lock");
         __atomic_store_n(&thread_lib_lock_initialized, 1, __ATOMIC_SEQ_CST);
     }
@@ -44,7 +44,7 @@ libthread_lock_release()
 
 static inline bool holding_libthread_lock() {
     libthread_lock_init();
-    return (thread_get_id() == thread_lib_lock.fast_recursive_lock.holder);
+    return (thread_get_id() == thread_lib_lock.spinlock_recursive.holder);
 }
 
 static inline void libthread_condition_variable_init(thread_handle_t *handle) {
