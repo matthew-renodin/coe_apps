@@ -524,7 +524,6 @@ int init_root_task(void) {
         return -2;
     }
 
-
     init_objects.proc_name = "root_task";
 
     zf_log_set_tag_prefix(init_objects.proc_name);

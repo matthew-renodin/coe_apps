@@ -545,8 +545,9 @@ int main(void) {
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
 
-    for(int j = 0; j < 100; j++) {
-        ZF_LOGI("Ticker: %lu", seL4_GetTicker());
+    for(int j = 0; j < 20; j++) {
+        ZF_LOGI("Ticker: %lu", (long unsigned)seL4_GetTicker());
+        seL4_Sleep(50);
     }
 
     cond_init(&runner_cond, LOCK_NOTIFICATION);
