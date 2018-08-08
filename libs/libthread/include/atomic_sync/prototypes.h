@@ -46,17 +46,10 @@ int mutex_create(mutex_t *mutex, lock_type_t type);
  * @brief Create a new userspace mutex lock
  * 
  * @param[out]  mutex               Lock to initialize
+ * @param       recursive           Whether the lock is recursive (re-entrant)
  * @return                          Error code
  */
-int mutex_fast_init(mutex_t *mutex);
-
-/**
- * @brief Create a new recursive (re-entrant) userspace mutex lock
- * 
- * @param[out]  mutex               Lock to initialize
- * @return                          Error code
- */
-int mutex_fast_recursive_init(mutex_t *mutex);
+int mutex_spinlock_init(mutex_t *mutex, bool recursive);
 
 /**
  * @brief Create a new notification-based mutex lock
@@ -67,22 +60,10 @@ int mutex_fast_recursive_init(mutex_t *mutex);
  * 
  * @param[out]  mutex               Lock to initialize
  * @param       notification        seL4_CPtr of the notification the lock uses
+ * @param       recursive           Whether the lock is recursive (re-entrant)
  * @return                          Error code
  */
-int mutex_notification_init(mutex_t *mutex, seL4_CPtr notification);
-
-/**
- * @brief Create a new notification-based recursive (re-entrant) mutex lock
- *
- * This will create a notification-based recursive mutex. Note that the cptr
- * provided here will not be de-allocated by the mutex_destroy
- * function.
- * 
- * @param[out]  mutex               Lock to initialize
- * @param       notification        seL4_CPtr of the notification the lock uses
- * @return                          Error code
- */
-int mutex_recursive_init(mutex_t *mutex, seL4_CPtr notification);
+int mutex_notification_init(mutex_t *mutex, seL4_CPtr notification, bool recursive);
 
 /**
  * @brief Acquire the mutex lock

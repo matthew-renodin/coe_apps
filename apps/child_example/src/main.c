@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
 void abort(void) {
     while(1) {
         ZF_LOGD("%s still alive.", my_name);
-        nanosleep(&(struct timespec){.tv_sec=5, .tv_nsec=0}, NULL);
+        nanosleep(&(struct timespec){.tv_sec=15, .tv_nsec=0}, NULL);
     }
 }
 
