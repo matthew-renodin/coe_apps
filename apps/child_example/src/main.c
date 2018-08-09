@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
 
 
 
-    thread_handle_t *worker = thread_handle_create(&thread_1mb_high_priority);
+    thread_handle_t *worker = thread_handle_create(&thread_defaults_1MB_stack);
     ZF_LOGF_IF(worker == NULL, "Failed to create thread.");
 
     error = thread_start(worker, worker_thread, (void*)0xdeadbeef);

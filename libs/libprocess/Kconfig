@@ -24,47 +24,54 @@ config LIB_PROCESS_DEFAULT_HEAP_SIZE_PAGES
     depends on LIB_PROCESS
     default 256
     help
-        Unless a process_attr_t is given, this default value will be set.
+        Default heap size for a child proc
 
 config LIB_PROCESS_DEFAULT_STACK_SIZE_PAGES
     int "Default stack size pages"
     depends on LIB_PROCESS
     default 256
     help
-        Unless a process_attr_t is given, this default value will be set.
+        Default stack size for a child proc
 
 config LIB_PROCESS_DEFAULT_PRIORITY
     int "Default priority"
     depends on LIB_PROCESS
     default 15
     help
-        Unless a process_attr_t is given, this default value will be set.
+        Default priority for a child proc
+
+config LIB_PROCESS_DEFAULT_MAX_PRIORITY
+    int "Default max priority"
+    depends on LIB_PROCESS
+    default 15
+    help
+        Default maximum controlled priority for a child proc
 
 config LIB_PROCESS_DEFAULT_CPU_AFFINITY
     int "Default Core Affinity"
     depends on LIB_PROCESS
-    default 0
+    default -1
     help
-        Unless a process_attr_t is given, this default value will be set.
+        Default core for a child proc, use -1 to inherit.
 
 config LIB_PROCESS_DEFAULT_CNODE_SIZE_BITS
     int "Default cnode size bits"
     depends on LIB_PROCESS
-    default 17
+    default 16
     help
-        Unless a process_attr_t is given, this default value will be set.
+        This number is how many capabilities can be stored in the child's root cnode.
 
 config LIB_PROCESS_DEFAULT_GIVE_ASID_POOL
-    int "Default determining whether an ASID pool cap is given"
+    int "Default bool deciding if an ASID pool cap is given"
     depends on LIB_PROCESS
     default 1
     help
-        Unless a process_attr_t is given, this default value will be set.
+        If you don't give an ASID pool cap to the child it cannot create valid address spaces.
 
 config LIB_PROCESS_DEFAULT_CREATE_FAULT_EP
-    int "Default determining whether a new fault endpoint is created for the child process"
+    int "Default determining whether a new fault endpoint is created"
     depends on LIB_PROCESS
     default 0
     help
-        Unless a process_attr_t is given, this default value will be set.
+        In debug mode this may be desirable to be false. The kernel will print a visible exception.
 

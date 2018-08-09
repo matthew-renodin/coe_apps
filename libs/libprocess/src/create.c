@@ -175,6 +175,7 @@ int process_create(const char *elf_file_name,
     thread_attr_t thread_attr = {
         .stack_size_pages = handle->attrs.stack_size_pages,
         .priority = handle->attrs.priority,
+        .max_priority = handle->attrs.max_priority,
         .cpu_affinity = handle->attrs.cpu_affinity,
     };
     handle->main_thread = thread_handle_create_custom(handle->cnode.cptr,

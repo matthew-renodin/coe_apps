@@ -75,17 +75,12 @@ UNUSED static void test_libthread(void) {
     ZF_LOGD("Starting libthread test.");
 
     /**
-     * Test the default attribute values
-     */
-    assert(thread_1mb_high_priority.stack_size_pages == 256);
-
-    /**
      * Testing handle creation
      */
     test_helper_handle = thread_handle_create(NULL);
     assert(test_helper_handle == NULL);
 
-    test_helper_handle = thread_handle_create(&thread_1mb_high_priority);
+    test_helper_handle = thread_handle_create(&thread_defaults_1MB_stack);
     assert(test_helper_handle != NULL);
 
     /**
@@ -303,9 +298,9 @@ UNUSED static void test_thread_init_objects(void) {
     /**
      * Try to crash: test vka, vspace locking.
      */
-    for(int i = 0; i < 4; i++) {
-        thread_attr_t ts_test_attr = thread_1mb_high_priority;
-        ts_test_attr.cpu_affinity = i % 4;
+    for(int i = 0; i < CONFIG_MAX_NUM_NODES; i++) {
+        thread_attr_t ts_test_attr = thread_defaults_1MB_stack;
+        ts_test_attr.cpu_affinity = i % CONFIG_MAX_NUM_NODES;
         thread_handle_t *thread_safe_tester = thread_handle_create(&ts_test_attr);
         ZF_LOGF_IF(thread_safe_tester == NULL, "Failed to create thread");
 
@@ -561,6 +556,7 @@ int main(void) {
         checkpoints[i] = 0;
         thread_attr_t attr = { .stack_size_pages = 32,
                                .priority = seL4_MaxPrio,
+                               .max_priority = seL4_MaxPrio,
                                .cpu_affinity = i };
         handles[i] = thread_handle_create(&attr);
         thread_handle_t *handle = handles[i];

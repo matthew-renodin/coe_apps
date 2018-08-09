@@ -13,7 +13,8 @@
 typedef struct thread_attr {
     seL4_Word stack_size_pages;
     seL4_Word priority;
-    seL4_Word cpu_affinity;
+    seL4_Word max_priority;
+    int cpu_affinity;
 } thread_attr_t;
 
 typedef enum {

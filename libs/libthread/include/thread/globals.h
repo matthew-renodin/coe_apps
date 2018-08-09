@@ -9,4 +9,7 @@
 
 #include "types.h"
 
-extern const thread_attr_t thread_1mb_high_priority;
+#define THREAD_SELF_CORE (-1)
+
+extern const thread_attr_t thread_defaults_1MB_stack;
+extern const thread_attr_t thread_defaults_64KB_stack;

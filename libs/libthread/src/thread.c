@@ -18,11 +18,20 @@
 
 #include <thread/sync.h>
 
-const thread_attr_t thread_1mb_high_priority = {
+const thread_attr_t thread_defaults_1MB_stack = {
     .stack_size_pages = 256,
     .priority = seL4_MaxPrio,
-    .cpu_affinity = 0, /* TODO is this sane? */
+    .max_priority = seL4_MaxPrio,
+    .cpu_affinity = THREAD_SELF_CORE,
 };
+
+const thread_attr_t thread_defaults_64KB_stack = {
+    .stack_size_pages = 16,
+    .priority = seL4_MaxPrio,
+    .max_priority = seL4_MaxPrio,
+    .cpu_affinity = THREAD_SELF_CORE,
+};
+
 
 int thread_lib_lock_initialized = 0;
 mutex_t thread_lib_lock = {0};
@@ -340,10 +349,17 @@ thread_handle_t *thread_handle_create_custom(seL4_CPtr cnode,
 
     error = seL4_TCB_SetPriority(handle->tcb.cptr, init_objects.tcb_cap, attr->priority);
     ZF_LOGW_IF(error, "Failed to set priority");
+
+    error = seL4_TCB_SetMCPriority(handle->tcb.cptr,
+                                   init_objects.tcb_cap,
+                                   attr->max_priority);
+    ZF_LOGW_IF(error, "Failed to set maximum control priority");
    
 #if CONFIG_MAX_NUM_NODES > 1
-    error = seL4_TCB_SetAffinity(handle->tcb.cptr, attr->cpu_affinity);
-    ZF_LOGW_IF(error, "Failed to set affinity");
+    if(attr->cpu_affinity != THREAD_SELF_CORE) {
+        error = seL4_TCB_SetAffinity(handle->tcb.cptr, (seL4_Word)attr->cpu_affinity);
+        ZF_LOGW_IF(error, "Failed to set affinity");
+    }
 #endif
     libthread_return_value(handle);
     tcb_configure_fail:
