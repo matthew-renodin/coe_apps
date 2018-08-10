@@ -38,6 +38,7 @@ int main(void) {
      *                            const char *proc_name,
      *                            const process_attr_t *attr,
      *                            process_handle_t *handle);
+     * 
      * hint 2: the global constant
      *         process_attr_t process_default_attrs
      *         may be helpful here
@@ -50,8 +51,7 @@ int main(void) {
     ZF_LOGF_IF(error, "Failed to create child process");
     
     /* TASK 2: Create an endpoint connection */
-    /*
-     * hint 1: int process_create_conn_obj(process_conn_type_t typ,
+    /* hint 1: int process_create_conn_obj(process_conn_type_t typ,
      *                                     const char *name,
      *                                     const process_conn_obj_attr_t *attr,
      *                                     process_conn_obj_t **obj);
@@ -77,11 +77,11 @@ int main(void) {
      * 
      * hint 2: PROCESS_SELF is used in place of handle for connecting self
      * 
-     * hint 2: process_rwg is acceptable for perms
+     * hint 3: process_rwg is acceptable for perms
      * 
-     * hint 3: NULL will use defaults for attr
+     * hint 4: NULL will use defaults for attr
      * 
-     * hint 4: ret is an out parameter when connecting self, so set that
+     * hint 5: ret is an out parameter when connecting self, so set that 
      */
     process_conn_ret_t connection;
     error = process_connect(PROCESS_SELF, endpoint, process_rwg, NULL, &connection);
@@ -93,16 +93,13 @@ int main(void) {
     };
 
     /* TASK 3: Connect your child process to the connection */
-    /*
-     * hint 1: int process_connect(process_handle_t *handle,
+    /* hint 1: int process_connect(process_handle_t *handle,
      *                             process_conn_obj_t *obj,
      *                             process_conn_perms_t perms,
      *                             process_conn_attr_t *attr,
      *                             process_conn_ret_t *ret);
-     * 
-     * hint 2: process_rwg is acceptable for perms
-     * 
-     * hint 3: ret is only used when connecting to self, so that can be NULL
+     * hint 2: process_rwg is acceptable for perms 
+     * hint 3: ret is only used when connecting to self, so that can be NULL 
      */
     error = process_connect(&child_process, endpoint, process_rwg, &badged_attr, NULL);
     ZF_LOGF_IF(error, "Failed to connect child to endpoint");
