@@ -18,7 +18,7 @@ ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLA
 #If we are starting other processes then we include the cpio archive.
 OFILES := archive.o
 # If we don't start any processes, we need an empty filesystem/cpio
-CFILES   += empty_cpio.c
+#CFILES   += empty_cpio.c
 
 ###############################################################################
 # LIBRARIES
