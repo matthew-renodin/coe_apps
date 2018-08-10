@@ -132,6 +132,8 @@ static void print_cpio_data(void) {
      * of an archive of attached applications.                */
     extern char _cpio_archive[];
 
+    if (_cpio_archive == NULL) return;
+
     printf("Parsing cpio data:\n");
     printf("+-------+------------------+------------+--------------+\n");
     printf("| index |        name      |  address   | size (bytes) |\n");

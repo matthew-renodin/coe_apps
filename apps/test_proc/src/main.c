@@ -39,8 +39,6 @@
 #include <init/init.h>
 #include <thread/thread.h>
 
-char _cpio_archive[1]; /* TODO remove */
-
 
 /**
  * Demo entry point

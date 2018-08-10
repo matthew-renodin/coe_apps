@@ -12,4 +12,8 @@ test_proc-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
               libplatsupport libsel4platsupport libcpio libelf \
               libprocess libthread libinit libmmap libsel4sync liblockwrapper
 
-test_proc: $(test_proc-y)
+#test_proc-components-y += 
+test_proc-components = $(addprefix $(STAGE_BASE)/bin/, $(test_proc-components-y))
+
+test_proc: export COMPONENTS=${test_proc-components}
+test_proc: ${test_proc-components-y} $(test_proc-y)

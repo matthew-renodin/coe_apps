@@ -12,4 +12,8 @@ dummy-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
           libplatsupport libsel4platsupport libcpio libelf \
           libprocess libthread libinit libmmap libsel4sync liblockwrapper
 
-dummy: $(dummy-y)
+#dummy-components-y += 
+dummy-components = $(addprefix $(STAGE_BASE)/bin/, $(dummy-components-y))
+
+dummy: export COMPONENTS=${dummy-components}
+dummy: ${dummy-components-y} $(dummy-y)
