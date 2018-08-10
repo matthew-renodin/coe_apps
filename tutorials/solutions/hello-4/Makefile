@@ -29,12 +29,10 @@ ASMFILES := $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/arch/${ARC
 ASMFILES += $(patsubst $(SOURCE_DIR)/%,%,$(wildcard $(SOURCE_DIR)/src/plat/${PLAT}/*.S))
 
 # Libraries required to build the target
-LIBS = c sel4 sel4muslcsys \
-       sel4simple sel4vka sel4allocman sel4vspace \
-       sel4platsupport platsupport\
-       sel4utils \
-       cpio elf \
-       utils sel4simple-default sel4debug platsupport
+LIBS = c sel4 sel4muslcsys sel4simple sel4vka sel4allocman sel4platsupport \
+       platsupport utils sel4simple-default sel4utils sel4debug sel4vspace \
+       elf cpio \
+       process thread init mmap sel4sync lockwrapper
 
 # extra cflags 
 CFLAGS += -Werror -g
@@ -46,6 +44,10 @@ ${COMPONENTS}:
 	false
 
 archive.o: ${COMPONENTS}
+	@echo " [GEN_CPIO] $@"
 	$(Q)mkdir -p $(dir $@)
 	${COMMON_PATH}/files_to_obj.sh $@ _cpio_archive $^
 
+empty_cpio.c:
+	@echo " [GEN_CPIO] $@"
+	$(Q)cp ${COMMON_PATH}/empty_cpio.c .

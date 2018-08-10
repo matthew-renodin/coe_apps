@@ -16,33 +16,11 @@
 
 
 /* Include Kconfig variables. */
-#include <autoconf.h>
-
 #include <stdio.h>
-#include <assert.h>
 
-#include <sel4/sel4.h>
-
-#include <simple/simple.h>
-#include <simple-default/simple-default.h>
-
-#include <vka/object.h>
-
-#include <allocman/allocman.h>
-#include <allocman/bootstrap.h>
-#include <allocman/vka.h>
-
-#include <vspace/vspace.h>
-
-#include <sel4utils/vspace.h>
-#include <sel4utils/mapping.h>
-#include <sel4utils/process.h>
-
-#include <utils/arith.h>
-#include <utils/zf_log.h>
-#include <sel4utils/sel4_zf_logif.h>
-
-#include <sel4platsupport/bootinfo.h>
+#include <init/init.h>
+#include <thread/thread.h>
+#include <process/process.h>
 
 /* constants */
 #define EP_BADGE 0x61 // arbitrary (but unique) number for a badge
@@ -51,193 +29,90 @@
 #define APP_PRIORITY seL4_MaxPrio
 #define APP_IMAGE_NAME "hello-4-app"
 
-/* global environment variables */
-seL4_BootInfo *info;
-simple_t simple;
-vka_t vka;
-allocman_t *allocman;
-vspace_t vspace;
-
-/* static memory for the allocator to bootstrap with */
-#define ALLOCATOR_STATIC_POOL_SIZE (BIT(seL4_PageBits) * 10)
-UNUSED static char allocator_mem_pool[ALLOCATOR_STATIC_POOL_SIZE];
-
-/* dimensions of virtual memory for the allocator to use */
-#define ALLOCATOR_VIRTUAL_POOL_SIZE (BIT(seL4_PageBits) * 100)
-
-/* static memory for virtual memory bootstrapping */
-UNUSED static sel4utils_alloc_data_t data;
-
-/* stack for the new thread */
-#define THREAD_2_STACK_SIZE 4096
-UNUSED static int thread_2_stack[THREAD_2_STACK_SIZE];
-
-/* convenience function */
-extern void name_thread(seL4_CPtr tcb, char *name);
-
 int main(void) {
+    init_root_task();
     UNUSED int error = 0;
 
-    /* get boot info */
-    info = platsupport_get_bootinfo();
-    ZF_LOGF_IF(info == NULL, "Failed to get bootinfo.");
-
-    /* Set up logging and give us a name: useful for debugging if the thread faults */
-    zf_log_set_tag_prefix("hello-4:");
-    name_thread(seL4_CapInitThreadTCB, "hello-4");
-
-    /* init simple */
-    simple_default_init_bootinfo(&simple, info);
-
-    /* print out bootinfo and other info about simple */
-    simple_print(&simple);
-
-    /* create an allocator */
-    allocman = bootstrap_use_current_simple(&simple, ALLOCATOR_STATIC_POOL_SIZE,
-                                            allocator_mem_pool);
-    ZF_LOGF_IF(allocman == NULL, "Failed to initialize allocator.\n"
-               "\tMemory pool sufficiently sized?\n"
-               "\tMemory pool pointer valid?\n");
-
-    /* create a vka (interface for interacting with the underlying allocator) */
-    allocman_make_vka(&vka, allocman);
-
-    /* TASK 1: create a vspace object to manage our vspace */
-    /* hint 1: sel4utils_bootstrap_vspace_with_bootinfo_leaky()
-     * int sel4utils_bootstrap_vspace_with_bootinfo_leaky(vspace_t *vspace, sel4utils_alloc_data_t *data, seL4_CPtr page_directory, vka_t *vka, seL4_BootInfo *info)
-     * @param vspace Uninitialised vspace struct to populate.
-     * @param data Uninitialised vspace data struct to populate.
-     * @param page_directory Page directory for the new vspace.
-     * @param vka Initialised vka that this virtual memory allocator will use to allocate pages and pagetables. This allocator will never invoke free.
-     * @param info seL4 boot info
-     * @return 0 on succes.
-     * Links to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_1:
-     */
-
-    sel4utils_bootstrap_vspace_with_bootinfo_leaky(&vspace, &data, simple_get_pd(&simple), &vka, info );
-    ZF_LOGF_IFERR(error, "Failed to prepare root thread's VSpace for use.\n"
-                  "\tsel4utils_bootstrap_vspace_with_bootinfo reserves important vaddresses.\n"
-                  "\tIts failure means we can't safely use our vaddrspace.\n");
-
-    /* fill the allocator with virtual memory */
-    void *vaddr;
-    UNUSED reservation_t virtual_reservation;
-    virtual_reservation = vspace_reserve_range(&vspace,
-                                               ALLOCATOR_VIRTUAL_POOL_SIZE, seL4_AllRights, 1, &vaddr);
-    ZF_LOGF_IF(virtual_reservation.res == NULL, "Failed to reserve a chunk of memory.\n");
-    bootstrap_configure_virtual_pool(allocman, vaddr,
-                                     ALLOCATOR_VIRTUAL_POOL_SIZE, simple_get_pd(&simple));
-
-    /* TASK 2: use sel4utils to make a new process */
-    /* hint 1: sel4utils_configure_process_custom()
-     * hint 2: process_config_default_simple()
-     * @param process Uninitialised process struct.
-     * @param vka Allocator to use to allocate objects.
-     * @param vspace Vspace allocator for the current vspace.
-     * @param priority Priority to configure the process to run as.
-     * @param image_name Name of the elf image to load from the cpio archive.
-     * @return 0 on success, -1 on error.
-     * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_2:
-     *
-     * hint 2: priority is in APP_PRIORITY and can be 0 to seL4_MaxPrio
-     * hint 3: the elf image name is in APP_IMAGE_NAME
-     */
-
-    sel4utils_process_t process;
-    sel4utils_configure_process_custom(&process, &vka, &vspace,
-        process_config_default_simple(&simple, APP_IMAGE_NAME, APP_PRIORITY));
+    /* TASK 1: Create a new process */
+    /* hint 1: int process_create(const char *elf_file_name,
+     *                            const char *proc_name,
+     *                            const process_attr_t *attr,
+     *                            process_handle_t *handle);
+     * hint 2: the global constant
+     *         process_attr_t process_default_attrs
+     *         may be helpful here
+    */
+    process_handle_t child_process;
+    error =  process_create(APP_IMAGE_NAME,
+                            APP_IMAGE_NAME,
+                            &process_default_attrs,
+                            &child_process);
+    ZF_LOGF_IF(error, "Failed to create child process");
     
-    ZF_LOGF_IFERR(error, "Failed to spawn a new thread.\n"
-                  "\tsel4utils_configure_process expands an ELF file into our VSpace.\n"
-                  "\tBe sure you've properly configured a VSpace manager using sel4utils_bootstrap_vspace_with_bootinfo.\n"
-                  "\tBe sure you've passed the correct component name for the new thread!\n");
-
-    /* TASK 3: give the new process's thread a name */
-
-    name_thread(process.thread.tcb.cptr, "hello-4: process_2");
-
-    /* create an endpoint */
-    vka_object_t ep_object = {0};
-    error = vka_alloc_endpoint(&vka, &ep_object);
-    ZF_LOGF_IFERR(error, "Failed to allocate new endpoint object.\n");
-
+    /* TASK 2: Create an endpoint connection */
     /*
-     * make a badged endpoint in the new process's cspace.  This copy
-     * will be used to send an IPC to the original cap
+     * hint 1: int process_create_conn_obj(process_conn_type_t typ,
+     *                                     const char *name,
+     *                                     const process_conn_obj_attr_t *attr,
+     *                                     process_conn_obj_t **obj);
+     * 
+     * hint 2: The process_conn_type for endpoints is PROCESS_ENDPOINT
+     * 
+     * hint 3: process_create_conn_obj will use defaults if argument 3 is NULL
      */
+    process_conn_obj_t *endpoint;
+    error = process_create_conn_obj(PROCESS_ENDPOINT,
+                                  "Parent-Child",
+                                  NULL,
+                                  &endpoint);
+    ZF_LOGF_IF(error, "Failed to create connection object");
 
-    /* TASK 4: make a cspacepath for the new endpoint cap */
-    /* hint 1: vka_cspace_make_path()
-     * void vka_cspace_make_path(vka_t *vka, seL4_CPtr slot, cspacepath_t *res)
-     * @param vka Vka interface to use for allocation of objects.
-     * @param slot A cslot allocated by the cspace alloc function
-     * @param res Pointer to a cspacepath struct to fill out
-     * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_4:
-     *
-     * hint 2: use the cslot of the endpoint allocated above
+    /* TASK 3: Connect the root_task thread to the connection */
+    /*
+     * hint 1: int process_connect(process_handle_t *handle,
+     *                             process_conn_obj_t *obj,
+     *                             process_conn_perms_t perms,
+     *                             process_conn_attr_t *attr,
+     *                             process_conn_ret_t *ret);
+     * 
+     * hint 2: PROCESS_SELF is used in place of handle for connecting self
+     * 
+     * hint 2: process_rwg is acceptable for perms
+     * 
+     * hint 3: NULL will use defaults for attr
+     * 
+     * hint 4: ret is an out parameter when connecting self, so set that
      */
-    cspacepath_t ep_cap_path;
-    seL4_CPtr new_ep_cap = 0;
-    vka_cspace_make_path(&vka, ep_object.cptr, &ep_cap_path);
+    process_conn_ret_t connection;
+    error = process_connect(PROCESS_SELF, endpoint, process_rwg, NULL, &connection);
+    ZF_LOGF_IF(error, "Failed to connect self to endpoint");
 
+    /* TASK 2: Initialize the child process's connection with a badged ep */
+    process_conn_attr_t badged_attr = {
+        .badge = EP_BADGE
+    };
 
-    /* TASK 5: copy the endpont cap and add a badge to the new cap */
-    /* hint 1: sel4utils_mint_cap_to_process()
-     * seL4_CPtr sel4utils_mint_cap_to_process(sel4utils_process_t *process, cspacepath_t src, seL4_CapRights rights, seL4_CapData_t data)
-     * @param process Process to copy the cap to
-     * @param src Path in the current cspace to copy the cap from
-     * @param rights The rights of the new cap
-     * @param data Extra data for the new cap (e.g., the badge)
-     * @return 0 on failure, otherwise the slot in the processes cspace.
-     * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_5:
-     *
-     * hint 2: for the rights, use seL4_AllRights
-     * hint 3: for the badge use seL4_CapData_Badge_new()
-     * seL4_CapData_t CONST seL4_CapData_Badge_new(seL4_Uint32 Badge)
-     * @param[in] Badge The badge number to use
-     * @return A CapData structure containing the desired badge info
-     *
-     * seL4_CapData_t is generated during build.
-     * The type definition and generated field access functions are defined in a generated file:
-     * build/x86/pc99/libsel4/include/sel4/types_gen.h
-     * It is generated from the following definition:
-     * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_5:
-     * You can find out more about it in the API manual: http://sel4.systems/Info/Docs/seL4-manual-3.0.0.pdf
-     *
-     * hint 4: for the badge value use EP_BADGE
+    /* TASK 3: Connect your child process to the connection */
+    /*
+     * hint 1: int process_connect(process_handle_t *handle,
+     *                             process_conn_obj_t *obj,
+     *                             process_conn_perms_t perms,
+     *                             process_conn_attr_t *attr,
+     *                             process_conn_ret_t *ret);
+     * 
+     * hint 2: process_rwg is acceptable for perms
+     * 
+     * hint 3: ret is only used when connecting to self, so that can be NULL
      */
+    error = process_connect(&child_process, endpoint, process_rwg, &badged_attr, NULL);
+    ZF_LOGF_IF(error, "Failed to connect child to endpoint");
 
-    new_ep_cap = sel4utils_mint_cap_to_process(&process, ep_cap_path, seL4_AllRights, EP_BADGE);
-
-    ZF_LOGF_IF(new_ep_cap == 0, "Failed to mint a badged copy of the IPC endpoint into the new thread's CSpace.\n"
-               "\tsel4utils_mint_cap_to_process takes a cspacepath_t: double check what you passed.\n");
-
-    printf("NEW CAP SLOT: %x.\n", ep_cap_path.capPtr);
-
-    /* TASK 6: spawn the process */
-    /* hint 1: sel4utils_spawn_process_v()
-     * int sel4utils_spawn_process(sel4utils_process_t *process, vka_t *vka, vspace_t *vspace, int argc, char *argv[], int resume)
-     * @param process Initialised sel4utils process struct.
-     * @param vka Vka interface to use for allocation of frames.
-     * @param vspace The current vspace.
-     * @param argc The number of arguments.
-     * @param argv A pointer to an array of strings in the current vspace.
-     * @param resume 1 to start the process, 0 to leave suspended.
-     * @return 0 on success, -1 on error.
-     * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_6:
+    /* TASK 3: Start the process */
+    /* hint 1: int process_run(process_handle_t *handle, int argc, char *argv[]);
+     * hint 2: In this case, set argv[0] to the name of the connection that the process will use
      */
-
-    seL4_Word argc = 1;
-    char string_args[argc][WORD_STRING_SIZE];
-    char* argv[argc];
-    sel4utils_create_word_args(string_args, argv, argc, new_ep_cap);
-
-    error = sel4utils_spawn_process_v(&process, &vka, &vspace, argc, (char**) &argv, 1);
-
-    ZF_LOGF_IFERR(error, "Failed to spawn and start the new thread.\n"
-                  "\tVerify: the new thread is being executed in the root thread's VSpace.\n"
-                  "\tIn this case, the CSpaces are different, but the VSpaces are the same.\n"
-                  "\tDouble check your vspace_t argument.\n");
+    char *argv[] = { "Parent-Child" }; 
+    error = process_run(&child_process, 1, argv);
 
     /* we are done, say hello */
     printf("main: hello world\n");
@@ -250,7 +125,7 @@ int main(void) {
     seL4_MessageInfo_t tag = seL4_MessageInfo_new(0, 0, 0, 0);
     seL4_Word msg;
 
-    /* TASK 7: wait for a message */
+    /* TASK 4: wait for a message */
     /* hint 1: seL4_Recv()
      * seL4_MessageInfo_t seL4_Recv(seL4_CPtr src, seL4_Word* sender)
      * @param src The capability to be invoked.
@@ -269,7 +144,7 @@ int main(void) {
      * hint 3: use the badged endpoint cap that you minted above
      */
 
-    tag = seL4_Recv(ep_object.cptr, &sender_badge);
+    tag = seL4_Recv(connection.self_cap, &sender_badge);
 
     /* make sure it is what we expected */
     ZF_LOGF_IF(sender_badge != EP_BADGE,
@@ -287,7 +162,7 @@ int main(void) {
     /* modify the message */
     seL4_SetMR(0, ~msg);
 
-    /* TASK 8: send the modified message back */
+    /* TASK 5: send the modified message back */
     /* hint 1: seL4_ReplyRecv()
      * seL4_MessageInfo_t seL4_ReplyRecv(seL4_CPtr dest, seL4_MessageInfo_t msgInfo, seL4_Word *sender)
      * @param dest The capability to be invoked.
@@ -304,10 +179,9 @@ int main(void) {
      * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_8:
      * You can find out more about it in the API manual: http://sel4.systems/Info/Docs/seL4-manual-3.0.0.pdf
      *
-     * hint 3: use the badged endpoint cap that you used for Call
+     * hint 3: use the endpoint cap that you used for Call
      */
-
-    seL4_ReplyRecv(ep_cap_path.capPtr, tag, &sender_badge);
+    seL4_ReplyRecv(connection.self_cap, tag, &sender_badge);
 
 
     return 0;

@@ -15,18 +15,21 @@
  */
 
 #include <stdio.h>
-#include <assert.h>
 
-#include <sel4/sel4.h>
-#include <sel4utils/process.h>
-
-#include <utils/zf_log.h>
-#include <sel4utils/sel4_zf_logif.h>
+#include <init/init.h>
 
 /* constants */
 #define MSG_DATA 0x6161 //  arbitrary data to send
 
 int main(int argc, char **argv) {
+    /* TASK 6: Initialize the child process */
+    /* hint 1: init_process();
+     * This is similar to init_root_task, but it sets things up a little
+     * differently because resources are provided from the parent intstead
+     * of from the kernel itself
+     */
+    init_process();
+
     seL4_MessageInfo_t tag;
     seL4_Word msg;
 
@@ -40,7 +43,7 @@ int main(int argc, char **argv) {
     tag = seL4_MessageInfo_new(0, 0, 0, 1);
     seL4_SetMR(0, MSG_DATA);
 
-    /* TASK 9: send and wait for a reply */
+    /* TASK 7: send and wait for a reply */
     /* hint 1: seL4_Call()
      * seL4_MessageInfo_t seL4_Call(seL4_CPtr dest, seL4_MessageInfo_t msgInfo)
      * @param dest The capability to be invoked.
@@ -49,11 +52,11 @@ int main(int argc, char **argv) {
      * Link to source: https://wiki.sel4.systems/seL4%20Tutorial%204#TASK_9:
      * You can find out more about it in the API manual: http://sel4.systems/Info/Docs/seL4-manual-3.0.0.pdf
      *
-     * hint 2: send the endpoint cap using argv (see TASK 6 in the other main.c)
+     * hint 2: send the endpoint cap using argv (see TASK 3 in the other main.c)
      */
     ZF_LOGF_IF(argc < 1,
                "Missing arguments.\n");
-    seL4_CPtr ep = (seL4_CPtr) atol(argv[0]);
+    seL4_CPtr ep = init_lookup_endpoint(argv[0]);
 
     tag = seL4_Call(ep, tag);
 

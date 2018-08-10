@@ -24,11 +24,3 @@ void abort(void) {
     while (1);
 }
 
-/* set a thread's name for debugging purposes */
-void name_thread(seL4_CPtr tcb, char *name) {
-#ifdef SEL4_DEBUG_KERNEL
-    seL4_DebugNameThread(tcb, name);
-#endif
-}
-
-
