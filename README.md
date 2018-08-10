@@ -212,7 +212,25 @@ err_code = thread_destroy_free_handle(&handle);
 ```
 
 **Using Synchronization Primitives.**
-We provide notification-based locks and spin locks with our library. Notification-based locks use help from the kernel using notification endpoints.
+We provide a unified interface for notification-based locks and spin locks with our library. Locks can be initialized either from lock-specific initialization calls or by selecting the lock type in the `mutex_create` call. 
+
+Notification-based locks use help from the kernel using notification endpoints, and therefore requre either a pre-allocated endpoint or untyped memory to create.
+```c
+mutex_t lock;
+/* Appropriate types can be found in libs/libthread/atomic_sync/types.h */
+int mutex_create(&lock, LOCK_NOTIFICATION);
+
+/* This API is independent of lock-type */
+mutex_lock(&lock);
+// ...
+mutex_unlock(&lock);
+
+mutex_destroy(&lock);
+```
+Libthread also provides a condition variable that can be either attached to an existing lock or make its own internal lock. While they do not require untyped memory to create, the thread does need to be initialized by libinit to provide a thread-specific wait endpoint.
+
+**`!!! NOTE: Condition variables require the process to have been initialized by libthread.`**
+
 ```c
 cond_init(&cond_var, LOCK_NOTIFICATION);
 
