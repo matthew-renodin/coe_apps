@@ -1,0 +1,25 @@
+#
+# Copyright 2017, Data61
+# Commonwealth Scientific and Industrial Research Organisation (CSIRO)
+# ABN 41 687 119 230.
+#
+# This software may be distributed and modified according to the terms of
+# the BSD 2-Clause license. Note that NO WARRANTY is provided.
+# See "LICENSE_BSD2.txt" for details.
+#
+# @TAG(DATA61_BSD)
+#
+
+apps-$(CONFIG_APP_HELLO_1_COE) += hello-1
+
+# list of libraries the app needs to build
+hello-1-y = common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
+            libsel4vka libsel4allocman libsel4simple libutils \
+            libsel4utils libsel4debug libsel4vspace \
+            libplatsupport libsel4platsupport libcpio libelf \
+            libprocess libthread libinit libmmap libsel4sync liblockwrapper
+
+hello-1-components = $(addprefix $(STAGE_BASE)/bin/, $(hello-1-components-y))
+
+hello-1: export COMPONENTS=${hello-1-components}
+hello-1: ${hello-1-components-y} kernel_elf $(hello-1-y)
