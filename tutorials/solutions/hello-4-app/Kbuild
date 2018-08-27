@@ -10,5 +10,14 @@
 # @TAG(DATA61_BSD)
 #
 
-components-$(CONFIG_APP_HELLO_4_APP) += hello-4-app
-hello-4-app: common libsel4 libmuslc libsel4muslcsys libutils libsel4utils libsel4debug libsel4platsupport libplatsupport
+components-$(CONFIG_APP_HELLO_4_COE_APP) += hello-4-app
+hello-4-app: common libsel4 libmuslc libsel4muslcsys libsel4simple-default \
+             libsel4vka libsel4allocman libsel4simple libutils \
+             libsel4utils libsel4debug libsel4vspace \
+             libplatsupport libsel4platsupport libcpio libelf \
+             libprocess libthread libinit libmmap libsel4sync liblockwrapper
+
+hello-4-components = $(addprefix $(STAGE_BASE)/bin/, $(hello-2-components-y))
+
+hello-4: export COMPONENTS=${hello-2-components}
+hello-4: ${hello-2-components-y} kernel_elf $(hello-2-y)

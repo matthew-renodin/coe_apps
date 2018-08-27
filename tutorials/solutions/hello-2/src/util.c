@@ -19,9 +19,6 @@
 
 #include <sel4/sel4.h>
 
-/* Libinit wants to know something about CPIO data, and we don't need that here */
-char _cpio_archive[] = {1};
-
 /* avoid main falling off the end of the world */
 void abort(void) {
     while (1);

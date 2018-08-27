@@ -153,7 +153,7 @@ Our libraries abstract away from the seL4 Libraries and allow the programmer to 
 ```
 
 ### Structure
-Our libraries are split into three external libraries for developers and two internal libraries.
+Our libraries are split into three external libraries for developers and two internal libraries. For additional details regarding the library api, look at the prototypes.h and types.h headers for each library (libs/libprocess/include/process/types.h).
 
 
 * Public Libraries:
@@ -212,7 +212,25 @@ err_code = thread_destroy_free_handle(&handle);
 ```
 
 **Using Synchronization Primitives.**
-We provide notification-based locks and spin locks with our library. Notification-based locks use help from the kernel using notification endpoints.
+We provide a unified interface for notification-based locks and spin locks with our library. Locks can be initialized either from lock-specific initialization calls or by selecting the lock type in the `mutex_create` call. 
+
+Notification-based locks use help from the kernel using notification endpoints, and therefore requre either a pre-allocated endpoint or untyped memory to create.
+```c
+mutex_t lock;
+/* Appropriate types can be found in libs/libthread/atomic_sync/types.h */
+int mutex_create(&lock, LOCK_NOTIFICATION);
+
+/* This API is independent of lock-type */
+mutex_lock(&lock);
+// ...
+mutex_unlock(&lock);
+
+mutex_destroy(&lock);
+```
+Libthread also provides a condition variable that can be either attached to an existing lock or make its own internal lock. While they do not require untyped memory to create, the thread does need to be initialized by libinit to provide a thread-specific wait endpoint.
+
+**`!!! NOTE: Condition variables require the process to have been initialized by libthread.`**
+
 ```c
 cond_init(&cond_var, LOCK_NOTIFICATION);
 
@@ -294,9 +312,34 @@ Before the destruction steps this is the IPC graph we have created:
 
 Each `process_connect` step creates a new edge.
 
-
-**Adding devices to processes**
+**Giving untyped memory to a process.** This is necesarry if you want to allow a process to create threads, processes, or other resources with the kernel's assistance.
 ```c
+// Give a process "num_objects" of size 2^size_bits
+err_code = process_give_untyped_resources(&handle, size_bits, num_objects);
+```
+
+**Adding devices to processes as the root task**
+```c
+// Map a physical region of memory into a process's address space.
+err_code = process_map_device_pages(&handle, uart1_phys_addr, num_pages, page_size_bits, "uart1_mem");
+
+// Map a physical region of memory into a process. "Give caps" allows the child to give the device away to other processses.
+err_code = process_map_device_pages_give_caps(&handle, uart2_phys_addr, num_pages, page_size_bits, "uart2_mem");
+
+// Give a process the ability to recieve an IRQ. This also give the process a notification.
+err_code = process_add_device_irq(&handle, uart1_irq_number, "uart1_irq");
+```
+
+**Adding devices to processes that were given by a parent**
+```c
+// Give memory that was mapped to the current process to a child.
+err_code = process_map_my_device(&handle, "my-device-name", "new-device-name");
+
+// Give memory that was mapped to the current process to a child. "Give caps" allows the child to give the device away to other processses.
+err_code = process_map_my_device_give_caps(&handle, "my-device-name", "new-device-name");
+
+// Give away an IRQ device that was given to us by a parent.
+process_add_my_device_irq(&handle, "uart1_irq", "serial_irq")
 ```
 
 
@@ -312,7 +355,6 @@ Each `process_connect` step creates a new edge.
 
 ## Known Issues
 - [ ] seL4test MULTICORE0003 failure
-
 
 
 
