@@ -112,7 +112,7 @@ static void thread_init_routine(thread_handle_t *handle,
     handle->returned_value = start_routine(arg);
     
     libthread_lock_acquire();
-    ZF_LOGD("Thread finished executing");
+    //ZF_LOGD("Thread finished executing");
     thread_state_t expected = THREAD_RUNNING;
     atomic_compare_exchange(&handle->state, &expected, THREAD_DESTROYED);
     cond_signalAll(&handle->join_condition);

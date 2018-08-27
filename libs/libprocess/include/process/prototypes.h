@@ -2,7 +2,7 @@
  * Copyright 2018, Intelligent Automation, Inc.
  * This software was developed in part under Air Force contract number FA8750-15-C-0066 and DARPA 
  *  contract number 140D6318C0001.
- * This software was released under DARPA, public release number XXXXXXXX (to be updated once approved)
+ * This software was released under DARPA, public release number 0.6.
  * This software may be distributed and modified according to the terms of the BSD 2-Clause license.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR

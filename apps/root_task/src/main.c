@@ -2,7 +2,7 @@
  * Copyright 2018, Intelligent Automation, Inc.
  * This software was developed in part under Air Force contract number FA8750-15-C-0066 and DARPA 
  *  contract number 140D6318C0001.
- * This software was released under DARPA, public release number XXXXXXXX (to be updated once approved)
+ * This software was released under DARPA, public release number 0.6.
  * This software may be distributed and modified according to the terms of the BSD 2-Clause license.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
@@ -315,7 +315,7 @@ UNUSED static void test_thread_init_objects(void) {
 UNUSED static void demo(void) {
     int err;
     process_handle_t child1, child2;
-checkpoint(); // 1
+    checkpoint(); // 1
     /**
      * Create two new processes
      */
@@ -324,26 +324,26 @@ checkpoint(); // 1
                          &process_default_attrs,
                          &child1);
     ZF_LOGF_IF(err, "Failed to create child1");
-checkpoint(); // 2
+    checkpoint(); // 2
     err = process_create("child_example", /* File name */
                          "child2",        /* Process name */
                          NULL,
                          &child2);
     ZF_LOGF_IF(err, "Failed to create child2");
-checkpoint(); // 3
+    checkpoint(); // 3
     /**
      * Give the new processes an IPC endpoint to communicate
      */
     process_conn_obj_t *echo1ep;
     err = process_create_conn_obj(PROCESS_ENDPOINT, "echo1-ep", NULL, &echo1ep); 
     ZF_LOGF_IF(err, "Failed to create ep");
-checkpoint(); // 4
+    checkpoint(); // 4
     err = process_connect(&child1, echo1ep, process_rwg, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect ep");
-checkpoint(); // 5
+    checkpoint(); // 5
     err = process_connect(&child2, echo1ep, process_rwg, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect ep");
-checkpoint(); // 6
+    checkpoint(); // 6
 
     /**
      * Also give the new processes two pages of shared memory.
@@ -354,22 +354,22 @@ checkpoint(); // 6
 
     err = process_create_conn_obj(PROCESS_SHARED_MEMORY, "echo1-shmem", NULL, &echo1shmem);
     ZF_LOGF_IF(err, "Failed to create shared memory");
-checkpoint(); // 7
+    checkpoint(); // 7
     err = process_create_conn_obj(PROCESS_SHARED_MEMORY, "echo2-shmem", NULL, &echo2shmem);
     ZF_LOGF_IF(err, "Failed to create shared memory");
-checkpoint(); // 8
+    checkpoint(); // 8
     err = process_connect(&child1, echo1shmem, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect shared memory");
-checkpoint(); // 9
+    checkpoint(); // 9
     err = process_connect(&child2, echo1shmem, process_ro, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect shared memory");
-checkpoint(); // 10
+    checkpoint(); // 10
     err = process_connect(&child1, echo2shmem, process_ro, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect shared memory");
-checkpoint(); // 11
+    checkpoint(); // 11
     err = process_connect(&child2, echo2shmem, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect shared memory");
-checkpoint(); // 12
+    checkpoint(); // 12
     /**
      * To synchronize writes/reads to the shared memory use two notification eps.
      */
@@ -378,22 +378,22 @@ checkpoint(); // 12
 
     err = process_create_conn_obj(PROCESS_NOTIFICATION, "echo1-notif", NULL, &echo1notif);
     ZF_LOGF_IF(err, "Failed to create notification ep");
-checkpoint(); // 13
+    checkpoint(); // 13
     err = process_create_conn_obj(PROCESS_NOTIFICATION, "echo2-notif", NULL, &echo2notif);
     ZF_LOGF_IF(err, "Failed to create notification ep");
-checkpoint(); // 14
+    checkpoint(); // 14
     err = process_connect(&child1, echo1notif, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect notification ep");
-checkpoint(); // 15
+    checkpoint(); // 15
     err = process_connect(&child2, echo1notif, process_ro, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect notification ep");
-checkpoint(); // 16
+    checkpoint(); // 16
     err = process_connect(&child1, echo2notif, process_ro, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect notification ep");
-checkpoint(); // 17
+    checkpoint(); // 17
     err = process_connect(&child2, echo2notif, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect notification ep");
-checkpoint(); // 18
+    checkpoint(); // 18
 
     /**
      * Give child 1 an ep to send messages to us, the parent.
@@ -401,14 +401,14 @@ checkpoint(); // 18
     process_conn_obj_t *child1_obj;
     err = process_create_conn_obj(PROCESS_ENDPOINT, "parent", NULL, &child1_obj);
     ZF_LOGF_IF(err, "Failed to create ep.");
-checkpoint(); // 19
+    checkpoint(); // 19
     err = process_connect(&child1, child1_obj, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect ep.");
-checkpoint(); // 20
+    checkpoint(); // 20
     process_conn_ret_t ret;
     err = process_connect(PROCESS_SELF, child1_obj, process_rw, NULL, &ret);
     ZF_LOGF_IF(err, "Failed to connect self ep.");
-checkpoint(); // 21
+    checkpoint(); // 21
     seL4_CPtr child1_ep = ret.self_cap;
 
 
@@ -418,26 +418,26 @@ checkpoint(); // 21
     process_conn_obj_t *child2_notif;
     err = process_create_conn_obj(PROCESS_NOTIFICATION, "parent", NULL, &child2_notif);
     ZF_LOGF_IF(err, "Failed to create notification.");
-checkpoint(); // 22
+    checkpoint(); // 22
     err = process_connect(&child2, child2_notif, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect ep.");
-checkpoint(); // 23
+    checkpoint(); // 23
     err = process_connect(PROCESS_SELF, child2_notif, process_rw, NULL, &ret);
     ZF_LOGF_IF(err, "Failed to connect self ep.");
-checkpoint(); // 24
+    checkpoint(); // 24
     seL4_CPtr child2_ep = ret.self_cap;
 
 
     process_conn_obj_t *child2_shmem_obj;
     err = process_create_conn_obj(PROCESS_SHARED_MEMORY, "parent", NULL, &child2_shmem_obj);
     ZF_LOGF_IF(err, "Failed to create notification.");
-checkpoint(); // 25
+    checkpoint(); // 25
     err = process_connect(&child2, child2_shmem_obj, process_rw, NULL, NULL);
     ZF_LOGF_IF(err, "Failed to connect ep.");
-checkpoint(); // 26
+    checkpoint(); // 26
     err = process_connect(PROCESS_SELF, child2_shmem_obj, process_rw, NULL, &ret);
     ZF_LOGF_IF(err, "Failed to connect self ep.");
-checkpoint(); // 27
+    checkpoint(); // 27
     void *child2_shmem = ret.self_shmem_addr;
 
     /**
@@ -445,10 +445,10 @@ checkpoint(); // 27
      */
     err = process_give_untyped_resources(&child1, 22, 4);
     ZF_LOGF_IF(err, "Failed to give untyped.");
-checkpoint(); // 28
+    checkpoint(); // 28
     err = process_give_untyped_resources(&child2, 22, 4);
     ZF_LOGF_IF(err, "Failed to give untyped.");
-checkpoint(); // 29
+    checkpoint(); // 29
 
 //#ifdef CONFIG_PLAT_ZYNQMP
 //    err = process_map_device_pages_give_caps(&child1,
@@ -461,25 +461,25 @@ checkpoint(); // 29
 //    err = process_add_device_irq(&child1, UART1_IRQ, "UART1-irq");
 //    ZF_LOGF_IF(err, "Failed to give IRQ device");
 //#endif
-checkpoint(); // 30
+    checkpoint(); // 30
     char *argv1[] = { "child1", "echo1-ep" }; 
     char *argv2[] = { "child2", "echo1-ep" };
     err = process_run(&child1, sizeof(argv1)/sizeof(argv1[0]), argv1);
     err = process_run(&child2, sizeof(argv2)/sizeof(argv2[0]), argv2);
-checkpoint(); // 31
+    checkpoint(); // 31
     seL4_MessageInfo_t msg = seL4_Recv(child1_ep, NULL);
     printf("Recieved msg from child 1: %lu\n", (long unsigned)seL4_MessageInfo_get_label(msg));
-checkpoint(); // 32
+    checkpoint(); // 32
     seL4_Wait(child2_ep, NULL); 
     printf("Recieved msg from child 2: %s\n", (const char *)child2_shmem);
 
     /**
      * Test process destruction.
      */
-checkpoint(); // 33
+    checkpoint(); // 33
     process_destroy(&child1);
     process_destroy(&child2);
-checkpoint(); // 34
+    checkpoint(); // 34
     err = process_free_conn_obj(&echo1ep);
     err |= process_free_conn_obj(&echo1notif);
     err |= process_free_conn_obj(&echo2notif);
@@ -490,51 +490,62 @@ checkpoint(); // 34
     err |= process_free_conn_obj(&child2_shmem_obj);
     ZF_LOGF_IF(err, "Failed to free an object");
 
-checkpoint(); // 35
+    checkpoint(); // 35
 }
 
 
 
 
 void * test_runner(void* cookie) {
-    int cycle_count = 0;
+	int cycle_count = 0;
 
-    while(1) {
-        cycle_count++;
+	while(1) {
+		cycle_count++;
 
-   #ifdef RUN_TESTS
-       test_libthread();
-       test_libprocess();
-       //test_process_leaks();
-       //test_thread_init_objects();
-   #endif
+#ifdef RUN_TESTS
+		test_libthread();
+		test_libprocess();
+		//test_process_leaks();
+		//test_thread_init_objects();
+#endif
 
-   #ifdef RUN_DEMO
-       demo();
-   #endif
+#ifdef RUN_DEMO
+		demo();
+#endif
 
-        cond_lock_acquire(&runner_cond);
-        
-        runner_count--;
-        if(runner_count == 0) {
-            ZF_LOGI("\n\n\n>>>>> ALL CORES FINISHED TEST, RESTARTING...");
-            ZF_LOGI(">>>>> STARTING CYCLE %i", cycle_count);
-            runner_count = CONFIG_MAX_NUM_NODES;
-            cond_broadcast(&runner_cond);
-        } else {
-            ZF_LOGI("Waiting for condition: %i %i", (int)thread_get_id(),(int)runner_count);
-            cond_wait(&runner_cond);
-        }
-        
-        cond_lock_release(&runner_cond);
+		cond_lock_acquire(&runner_cond);
 
-    }
+		runner_count--;
+		if(runner_count == 0) {
+#ifdef RUN_DEMO
+			ZF_LOGI("\n\n\n>>>>> ALL CORES FINISHED QUICK DEMO. \n\nDONE.\n\n");
+			cond_lock_release(&runner_cond);
+        		while(1)seL4_Sleep(1000);
+#endif
+			ZF_LOGI("\n\n\n>>>>> ALL CORES FINISHED TEST, RESTARTING...");
+			ZF_LOGI(">>>>> STARTING CYCLE %i", cycle_count);
+			runner_count = CONFIG_MAX_NUM_NODES;
+			cond_broadcast(&runner_cond);
+		} else {
+			ZF_LOGI("Waiting for condition: %i %i", (int)thread_get_id(),(int)runner_count);
+			cond_wait(&runner_cond);
+		}
+
+		cond_lock_release(&runner_cond);
+
+	}
 
 }
 
 
 /**
- * Demo entry point after kernel boots.
+ * Entry point after kernel boots.
+ *
+ * PLEASE NOTE: That the very first thread started by the (micro)kernel is gifted with ALL PRIVS TO EVERYTHING.
+ * It is not so much a thread as it is your operating system. Give out only necessary permissions to any
+ * threads/processes that you start, and then GO INTO A SAFE LOOP. It is not advised to use this thread for
+ * complex code which may be subject to attack.
+ *
  */
 int main(void) {
     int err;
@@ -542,10 +553,11 @@ int main(void) {
     err = init_root_task();
     ZF_LOGF_IF(err, "Failed to init");
 
-    for(int j = 0; j < 20; j++) {
+    for(int j = 0; j < 10; j++) {
         ZF_LOGI("Ticker: %lu", (long unsigned)seL4_GetTicker());
         seL4_Sleep(50);
     }
+
 
     cond_init(&runner_cond, LOCK_NOTIFICATION);
     runner_count = CONFIG_MAX_NUM_NODES;
@@ -566,8 +578,15 @@ int main(void) {
         ZF_LOGF_IF(err, "Failed to start thread"); 
     }
 
+    //print out running threads
     seL4_DebugDumpScheduler();
 
+
+    //print out the current system memory map
+    seL4_DebugProcMap();
+
+
+#ifdef RUN_TESTS
     int current_checks[CONFIG_MAX_NUM_NODES];
     while(1){
         nanosleep(&(struct timespec){.tv_sec=2, .tv_nsec=0}, NULL);
@@ -582,6 +601,10 @@ int main(void) {
             printf("%d\t\t\t%d\n", i+1, current_checks[i]);
         }
     }
+#else
+    printf("\n\nMain idling.\n\n\n\n");
+    abort();
+#endif
 
     return 0;
 }

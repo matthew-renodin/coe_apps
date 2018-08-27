@@ -2,7 +2,7 @@
  * Copyright 2018, Intelligent Automation, Inc.
  * This software was developed in part under Air Force contract number FA8750-15-C-0066 and DARPA 
  *  contract number 140D6318C0001.
- * This software was released under DARPA, public release number XXXXXXXX (to be updated once approved)
+ * This software was released under DARPA, public release number 0.6.
  * This software may be distributed and modified according to the terms of the BSD 2-Clause license.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
@@ -200,11 +200,13 @@ static int remap_root_task_elf_regions() {
     extern char _edata[];
     extern char _end[];
 
+/*
     ZF_LOGD("Remapping root task image... start:%p, etext:%p, edata:%p, end:%p",
             __executable_start,
             _etext,
             _edata,
             _end);
+*/
 
     int num_image_caps = simple_get_userimage_count(&init_objects.simple);
     seL4_CPtr page_dir = simple_get_init_cap(&init_objects.simple, seL4_CapInitThreadVSpace);
@@ -280,10 +282,10 @@ int init_process(void) {
     void *init_data_packed = (void*)strtol(getenv("INIT_DATA_ADDR"), NULL, 16);
     seL4_Word init_data_packed_size = atoi(getenv("INIT_DATA_SIZE"));
 
-    ZF_LOGD("env: HEAP_ADDR=%p", morecore_area);
-    ZF_LOGD("env: HEAP_SIZE=%lu", (unsigned long) morecore_size);
-    ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
-    ZF_LOGD("env: INIT_DATA_SIZE=%lu", (unsigned long) init_data_packed_size);
+    //ZF_LOGD("env: HEAP_ADDR=%p", morecore_area);
+    //ZF_LOGD("env: HEAP_SIZE=%lu", (unsigned long) morecore_size);
+    //ZF_LOGD("env: INIT_DATA_ADDR=%p", init_data_packed);
+    //ZF_LOGD("env: INIT_DATA_SIZE=%lu", (unsigned long) init_data_packed_size);
 
 
     /**
@@ -318,7 +320,7 @@ int init_process(void) {
 #endif
 
     zf_log_set_tag_prefix(init_objects.proc_name);
-    ZF_LOGD("Starting up process: %s.", init_objects.proc_name);
+    //ZF_LOGD("Starting up process: %s.", init_objects.proc_name);
 
     /**
      * Setup allocman. We are giving allocman a static array of memory to get
@@ -369,9 +371,9 @@ int init_process(void) {
 
         iter = iter->next;
     }
-    ZF_LOGV("Added %lu untyped objects to allocman, totalling: %luK",
-            (unsigned long) total_ut_count,
-            (unsigned long) total_ut_memory / 1024);
+    //ZF_LOGV("Added %lu untyped objects to allocman, totalling: %luK",
+    //        (unsigned long) total_ut_count,
+    //        (unsigned long) total_ut_memory / 1024);
     
     /**
      * At this point, we have untypeds and the VKA to use them
