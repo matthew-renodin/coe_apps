@@ -1,7 +1,7 @@
 # seL4 USA Center of Excellence (CoE) is now Open for Business
 
 If you have any questions, please send an email to
-[mail@sel4-us.com](mailto:mail@sel4-us.org).
+[mail@sel4-us.org](mailto:mail@sel4-us.org).
   
 If there is something on the project that should be improved, please 
 create a GitHub issue.
